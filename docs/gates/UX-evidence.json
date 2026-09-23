@@ -1,0 +1,181 @@
+{
+  "feature": "interaction-ux-phase-1",
+  "recordedAt": "2026-09-21T03:36:13.206Z",
+  "status": "DEPLOYED_PROJECT_SELECTION_ACCEPTED_REMAINING_UX_PENDING",
+  "scope": [
+    "project-picker-and-persisted-drafts",
+    "continue-and-new-topic-navigation",
+    "project-switch-and-details-buttons",
+    "compact-task-cards-with-receipt-marker",
+    "durable-routing-and-early-followups"
+  ],
+  "validation": {
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "format": "PASS",
+    "testFiles": 17,
+    "tests": 226,
+    "addedRegressionTests": 20,
+    "candidateBuild": "PASS",
+    "candidateConfigCheck": "PASS_STRUCTURE_ONLY",
+    "gui": "NOT_TESTED",
+    "feishuApi": "SIMULATED",
+    "modelExecution": "SIMULATED",
+    "database": "REAL_SQLITE",
+    "socketAndProcessTests": "REAL_LOCAL"
+  },
+  "migration": {
+    "from": 3,
+    "to": 4,
+    "status": "PASS_ON_PRIVATE_COPY_ONLY",
+    "report": ".artifacts/interaction-ui/r01/migration-acceptance.json",
+    "taskRowsUnchanged": true,
+    "countsBefore": {
+      "tasks": 14,
+      "threads": 11,
+      "inbox": 97,
+      "commands": 14,
+      "rpc_operations": 32,
+      "outbox": 111,
+      "approvals": 0,
+      "execution_locks": 0,
+      "user_context": 1,
+      "feishu_commands": 35,
+      "feishu_actions": 156
+    },
+    "countsAfter": {
+      "tasks": 14,
+      "threads": 11,
+      "inbox": 97,
+      "commands": 14,
+      "rpc_operations": 32,
+      "outbox": 111,
+      "approvals": 0,
+      "execution_locks": 0,
+      "user_context": 1,
+      "feishu_commands": 35,
+      "feishu_actions": 156
+    }
+  },
+  "deployment": {
+    "enabled": true,
+    "switchedAt": 1789961432802,
+    "buildHash": "87a90aae88bacaadc15b485d0cbcf58c0470b6d87e2c3733eb259616ed9068ba",
+    "configUnchanged": true,
+    "productionSchemaVersion": 4,
+    "services": {
+      "appServer": {
+        "pid": 70221,
+        "healthy": true,
+        "ready": true,
+        "rpcReady": true,
+        "feishuConnected": false
+      },
+      "gateway": {
+        "pid": 70224,
+        "healthy": true,
+        "ready": true,
+        "rpcReady": true,
+        "feishuConnected": true
+      }
+    },
+    "productionMigration": {
+      "status": "PASS_ON_PRODUCTION_DATABASE",
+      "allOriginalRowsUnchanged": true,
+      "comparedTables": 17,
+      "tasks": 15,
+      "threads": 11,
+      "outbox": 117,
+      "actions": 164,
+      "integrity": "ok",
+      "foreignKeyViolations": 0,
+      "report": ".artifacts/deployments/ux-20260921-r01/migration.json"
+    },
+    "feishuDelivery": {
+      "status": "PASS_FEISHU_API_RECEIPT",
+      "attempts": 1,
+      "modelTasksCreated": 0,
+      "humanUiAcceptance": "PENDING",
+      "report": ".artifacts/deployments/ux-20260921-r01/smoke-delivery.json"
+    },
+    "backup": {
+      "status": "PASS_MANUALLY_TRIGGERED_NOT_AUTOMATIC_COVERAGE",
+      "report": ".artifacts/deployments/ux-20260921-r01/maintenance-after.json"
+    },
+    "oldTrial": {
+      "status": "ENDED_EARLY_FOR_AUTHORIZED_UX_DEPLOYMENT",
+      "elapsedHours": 16.13079722222222,
+      "countsAsPassed": false,
+      "report": ".artifacts/deployments/ux-20260921-r01/trial-archive.json"
+    },
+    "newTrial": {
+      "status": "OBSERVING",
+      "startedAt": "2026-09-21T03:31:51.664Z",
+      "earliestReviewAt": "2026-09-22T03:31:51.664Z",
+      "report": ".artifacts/deployments/ux-20260921-r01/trial-new.json",
+      "automaticAcceptance": false
+    },
+    "notifyEnabled": false,
+    "report": ".artifacts/deployments/ux-20260921-r01/deployment.json",
+    "projectSelection": {
+      "status": "PASS_USER_OBSERVED_AND_RECEIPT_VERIFIED",
+      "report": ".artifacts/deployments/ux-20260921-r01/project-selection-acceptance.json",
+      "modelTasksCreated": 0
+    }
+  },
+  "sourceSHA256": {
+    "src/feishu/conversation-ui.ts": "95af9dcdcb03b6e0d0b74c802c5315576dc7d528aedf33343e960ef2abf649da",
+    "src/feishu/commands.ts": "0c09bf1881c4ff2a9656320cb9053be0f9101de66b2f2087fbcb6e0fb20f4be5",
+    "src/feishu/inbound.ts": "210e29d35f7f7b0835c15f2cc80ee0d773b99a111e9ebe059319d49767bc754a",
+    "src/feishu/sender.ts": "655674fcc1d7829df007d0ae0e15910f776c143e50c00561b87680b8858b483f",
+    "src/feishu/runtime.ts": "0237e1c6883c188a23ebe5c54557c8334f35dadb2024b21075bdc90cbf24659c",
+    "src/persistence/migrate.ts": "f215ba9c0e1b1cfc7be89373abab74a462266e58b52e9c25c9d8ee632215448c",
+    "src/persistence/migrations/004_conversation_ui.sql": "48250d90d55ba3e733b15137570fa1f386d1eea52883ce4aa1b353acb0b8ce25",
+    "src/service/maintenance.ts": "2391d3be4ac5fe957ee95eecb6f12ef63f1dc9ee62f2a399cf6a4a9a12b7e984",
+    "tests/feishu-gateway.test.mjs": "9abd9be5beabe4feb1c622519e24118e32faa9e14dd394f81a44f047d21b2c29",
+    "tests/m4-interactions.test.mjs": "e1151b981ce081a7978a6cff7d67a9564e2317018b144738547bb5c2f6a5d5b0",
+    "tests/service.test.mjs": "be9042562b23ad891b337f630397153ce2844bdfe38b780597db0ddeafbcdb08"
+  },
+  "pending": [
+    "plain-chat-continue-new-topic-details-draft-real-acceptance",
+    "mobile-and-desktop-layout-review"
+  ],
+  "notInThisPhase": [
+    "card-input-forms",
+    "guided-steer-input",
+    "recent-task-picker",
+    "natural-language-control-intent-classification"
+  ],
+  "preDeploymentIsolation": {
+    "enabled": false,
+    "candidateBuild": ".artifacts/interaction-ui/r01/build",
+    "buildUnchanged": true,
+    "configUnchanged": true,
+    "trialUnchanged": true,
+    "sameServicePids": true,
+    "productionSchemaVersion": 3,
+    "services": {
+      "gateway": {
+        "pid": 47446,
+        "ready": true,
+        "healthy": true,
+        "rpcReady": true,
+        "feishuConnected": true
+      },
+      "app-server": {
+        "pid": 59887,
+        "ready": true,
+        "healthy": true,
+        "rpcReady": true,
+        "feishuConnected": false
+      }
+    }
+  },
+  "supersededDeployment": {
+    "recordedAt": "2026-09-23T03:47:45.946Z",
+    "feature": "current-project-and-conversation-panel",
+    "schemaVersion": 5,
+    "evidence": "docs/gates/context-panel-evidence.json",
+    "note": "Historical phase-one evidence above is preserved; use successor for current production deployment."
+  }
+}

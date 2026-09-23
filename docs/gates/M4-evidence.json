@@ -1,0 +1,188 @@
+{
+  "milestone": "M4",
+  "status": "PASS",
+  "scope": "Stage functionality with case-level evidence across multiple runs; not production reliability certification",
+  "completedAt": "2026-09-20T08:34:52.616Z",
+  "baseline": {
+    "milestone": "M4",
+    "node": "24.15.0",
+    "pnpm": "11.20.0",
+    "codex": "0.155.0-alpha.9.2",
+    "codexBinary": "/Applications/ChatGPT.app/Contents/Resources/codex",
+    "protocolExperimental": true
+  },
+  "localVerification": {
+    "command": "pnpm verify",
+    "tests": 158,
+    "result": "PASS",
+    "log": ".artifacts/m4-final-verify.log",
+    "requiresLocalLoopback": true,
+    "verifiedAt": "2026-09-20T08:37:58.239763+00:00"
+  },
+  "cases": [
+    {
+      "case": "controls",
+      "status": "PASS",
+      "sourceReport": "../../.artifacts/m4/2026-09-20T02-36-26.421Z-controls-dc67e5d1/report.json",
+      "sourceRunStatus": "PASS",
+      "checks": {
+        "steerAcceptedForExactTurn": "PASS",
+        "workerReconnectSameTurn": "PASS",
+        "interruptTerminalAndLockRelease": "PASS",
+        "noSecondTurn": "PASS",
+        "remoteTerminalCard": "PASS"
+      }
+    },
+    {
+      "case": "approvals",
+      "status": "PASS",
+      "sourceReport": "../../.artifacts/m4/2026-09-20T02-52-50.790Z-approvals-d3b9b213/report.json",
+      "sourceRunStatus": "PASS",
+      "checks": {
+        "phoneApproval_accept": "PASS",
+        "remoteCard_accept": "PASS",
+        "phoneApproval_decline": "PASS",
+        "remoteCard_decline": "PASS",
+        "twoPhoneDecisionsTwoTurns": "PASS"
+      }
+    },
+    {
+      "case": "inputs",
+      "status": "PASS",
+      "sourceReport": "../../.artifacts/m4/2026-09-20T03-43-27.218Z-inputs-3b9e02d3/report.json",
+      "sourceRunStatus": "PASS",
+      "checks": {
+        "partialAnswerStillWaiting": "PASS",
+        "phoneInput_answer": "PASS",
+        "phoneInput_cancel": "PASS",
+        "twoMessagesOneCancelTwoTurns": "PASS"
+      }
+    },
+    {
+      "case": "permissionNetwork",
+      "status": "PASS",
+      "sourceReport": "../../.artifacts/m4/2026-09-20T05-59-33.983Z-permissions-88b1bae1/report.json",
+      "sourceRunStatus": "BLOCKED",
+      "checks": {
+        "phonePermissions_network": "PASS",
+        "remoteCard_network": "PASS"
+      }
+    },
+    {
+      "case": "permissionCancel",
+      "status": "PASS",
+      "sourceReport": "../../.artifacts/m4/2026-09-20T07-12-05.129Z-permissions-58e40b52/report.json",
+      "sourceRunStatus": "PASS",
+      "checks": {
+        "phonePermissions_cancel": "PASS",
+        "remoteCard_cancel": "PASS"
+      }
+    },
+    {
+      "case": "fileAccept",
+      "status": "PASS",
+      "sourceReport": "../../.artifacts/m4/2026-09-20T07-23-02.731Z-files-1bcac9e9/report.json",
+      "sourceRunStatus": "FAIL",
+      "checks": {
+        "phoneFile_accept": "PASS",
+        "remoteCard_accept": "PASS"
+      }
+    },
+    {
+      "case": "fileCancel",
+      "status": "PASS",
+      "sourceReport": "../../.artifacts/m4/2026-09-20T07-32-32.649Z-files-9f1e14fc/report.json",
+      "sourceRunStatus": "PASS",
+      "checks": {
+        "phoneFile_cancel": "PASS",
+        "remoteCard_cancel": "PASS"
+      }
+    },
+    {
+      "case": "phoneSteer",
+      "status": "PASS",
+      "sourceReport": "../../.artifacts/m4/2026-09-20T07-40-15.044Z-phone-controls-a3df5457/report.json",
+      "sourceRunStatus": "BLOCKED",
+      "checks": {
+        "phoneControl_steer": "PASS"
+      }
+    },
+    {
+      "case": "phoneInterrupt",
+      "status": "PASS",
+      "sourceReport": "../../.artifacts/m4/2026-09-20T07-58-22.470Z-phone-controls-7a44d014/report.json",
+      "sourceRunStatus": "PASS",
+      "checks": {
+        "phoneControl_interrupt": "PASS",
+        "phoneInterruptTerminalAndLockRelease": "PASS",
+        "onePhoneMessageOneTurn": "PASS",
+        "remoteTerminalCard": "PASS"
+      }
+    },
+    {
+      "case": "ownership",
+      "status": "PASS",
+      "sourceReport": "../../.artifacts/m4/2026-09-20T02-46-47.641Z-ownership-2aa62373/report.json",
+      "sourceRunStatus": "PASS",
+      "checks": {
+        "actualWriterConflict": "PASS",
+        "resumeAfterExplicitOwnerShutdown": "PASS",
+        "originalThreadNoNewModelTurn": "PASS"
+      }
+    },
+    {
+      "case": "recovery",
+      "status": "PASS",
+      "sourceReport": "../../.artifacts/m4/2026-09-20T02-52-11.927Z-recovery-e2aca320/report.json",
+      "sourceRunStatus": "PASS",
+      "checks": {
+        "exactTurnAfterServerExit": "PASS",
+        "noNewTurnOrApproval": "PASS",
+        "originalCardUpdated": "PASS"
+      }
+    },
+    {
+      "case": "terminalNotice",
+      "status": "PASS",
+      "sourceReport": "../../.artifacts/m4/2026-09-20T07-40-15.044Z-phone-controls-a3df5457-terminal-notice/report.json",
+      "sourceRunStatus": "PASS",
+      "checks": {
+        "independentTerminalReceipt": "PASS",
+        "originalUnknownAndBindingPreserved": "PASS",
+        "noRpcOrPatchReplay": "PASS",
+        "sourceDatabaseUnchanged": "PASS"
+      }
+    },
+    {
+      "case": "desktopHandoff",
+      "status": "PASS",
+      "sourceReport": "../../.artifacts/m4/2026-09-20T08-21-03.027Z-desktop-handoff-219734ca/report.json",
+      "sourceRunStatus": "PASS",
+      "checks": {
+        "actualWriterConflict": "PASS",
+        "guiWriterConflict": "PASS_USER_OBSERVED",
+        "explicitTestOwnerShutdown": "PASS",
+        "guiResumeAfterRelease": "PASS_USER_OBSERVED",
+        "originalThreadNoNewModelTurn": "PASS"
+      }
+    }
+  ],
+  "limitations": [
+    "G1 platform automatic redelivery remains PARTIAL; local event replay is not equivalent.",
+    "Literal command decline was not offered in the real test; the decline-named branch sent cancel.",
+    "Input and permissions tools were enabled only in test processes; file approval used a test-only read-only sandbox.",
+    "Permission subset checks verify the exact response, not subsequent sandbox access behavior.",
+    "SIGTERM/SIGKILL recovery cases use simulated RPC with real local processes; real App Server exit recovery is separately recorded.",
+    "Original PATCH is still unknown; independent terminal notice delivered while preserving the original binding and failed reports.",
+    "GUI observations are user-reported; RPC confirms the original thread and unchanged turn history. No automatic handoff or new GUI turn was tested.",
+    "M5 services, installation, 24-hour supervised trial, and M6/G3 GUI notifications are not included."
+  ],
+  "nextStage": "M5",
+  "doctor": {
+    "command": "pnpm run doctor",
+    "status": "ok",
+    "milestone": "M4",
+    "scope": "local-compatibility-only",
+    "report": ".artifacts/m4-final-doctor.json"
+  }
+}

@@ -1,0 +1,199 @@
+{
+  "feature": "session-navigation-replies-and-id-display",
+  "recordedAt": "2026-09-23T08:44:44.944620+00:00",
+  "status": "DEPLOYED_ID_DISPLAY_ONLY_AS_REQUESTED",
+  "validation": {
+    "files": 22,
+    "tests": 298,
+    "addedTests": 13,
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "format": "PASS",
+    "isolatedCandidateBuild": "PASS",
+    "latestCorrection": {
+      "files": 4,
+      "tests": 94,
+      "typecheck": "PASS",
+      "lint": "PASS",
+      "format": "PASS",
+      "isolatedCandidateBuild": "PASS",
+      "scope": "ID_DISPLAY_TEXT_AND_NO_COPY_ACTIONS"
+    },
+    "fullRegressionScope": "PREVIOUS_REVISION_2_298_TESTS"
+  },
+  "behavior": {
+    "allButtonsBordered": true,
+    "sessionGrouping": "OWNER_PROJECT_THREAD",
+    "rowsPerPage": 4,
+    "stateAwareReplyActions": true,
+    "selectedConversationDoesNotRequireSelectAgain": true,
+    "fullRetainedResultPages": true,
+    "resultPageSize": 1600,
+    "controlledMarkdown": true,
+    "copyEntry": "NONE_ID_DISPLAY_ONLY",
+    "automaticClipboardWrite": false,
+    "multiSessionReply": "REJECT_AMBIGUOUS_TARGET",
+    "desktopReadOnly": true,
+    "newDependencies": 0,
+    "frozenWireAndReceiptsRetained": true,
+    "noIntermediateIdCard": true,
+    "noNewCopyCallbacks": true,
+    "noIntermediateIdCardScope": "NEW_CARDS_ONLY_LEGACY_CALLBACK_RETAINS_ID_DISPLAY"
+  },
+  "realPlatform": {
+    "at": "2026-09-23T08:35:55.266Z",
+    "status": "PASS_REAL_FEISHU_INLINE_IDS_WITHOUT_COPY_CALLBACK",
+    "syntheticDataOnly": true,
+    "productionDbRead": false,
+    "realModelTasksCreated": 0,
+    "onePreviewMessage": true,
+    "accepted": [
+      {
+        "kind": "session-list",
+        "bytes": 2817,
+        "apiAccepted": true,
+        "receiptInPreview": true
+      },
+      {
+        "kind": "result-first",
+        "bytes": 3311,
+        "apiAccepted": true,
+        "receiptInPreview": true
+      },
+      {
+        "kind": "result-last",
+        "bytes": 2592,
+        "apiAccepted": true,
+        "receiptInPreview": true
+      },
+      {
+        "kind": "inline-id-list",
+        "bytes": 2817,
+        "apiAccepted": true,
+        "receiptInPreview": true
+      }
+    ],
+    "clipboardOnMobile": "FAILED_NATIVE_COPY_ICON_UNAVAILABLE",
+    "humanVisualCheck": "USER_REPORTED_NO_CODE_BLOCK_COPY_ICON",
+    "scope": "PREVIOUS_REVISION_2_COMPONENT_ACCEPTANCE_ONLY_NOT_CLIPBOARD"
+  },
+  "migration": {
+    "at": "2026-09-23T08:27:02.061Z",
+    "schema": 8,
+    "fromSchema": 7,
+    "migrationRehearsal": true,
+    "allBusinessRowsUnchanged": true,
+    "businessTables": 20,
+    "integrity": "ok"
+  },
+  "deployment": {
+    "at": "2026-09-23T08:43:52.604Z",
+    "status": "PASS_REAL_DEPLOYMENT_AND_CANONICAL_UPDATE",
+    "schemaVersion": 8,
+    "ready": true,
+    "feishuConnected": true,
+    "samePanel": true,
+    "sameMessage": true,
+    "operation": "update",
+    "version": 283,
+    "taskCount": 15,
+    "selectionUnchanged": true,
+    "outboxIssues": 0,
+    "structuredLayoutVersion": 1,
+    "nativeColumns": true,
+    "allButtonsBordered": true,
+    "sessionPickerEntry": true,
+    "noCopyCallbackButton": true,
+    "receiptInRemotePreview": true,
+    "remoteGetScope": "IM_GET_PREVIEW_NOT_HUMAN_UI",
+    "quotaAbsentFromPanel": true,
+    "buildHash": "b62e23c4a034bf47ec604af1e221951ff5028318d4be709af587773de408e3d0",
+    "previousBuildHash": "3250cf3b63276c3bc193a1b9121e64bf819af989a761e09e56351b1da1f9dd6e",
+    "configUnchanged": true,
+    "notifyEnabled": false,
+    "privateEvidenceRoot": ".artifacts/deployments/session-navigation-20260923-r03",
+    "dataCheck": {
+      "at": "2026-09-23T08:43:40.162Z",
+      "schema": 8,
+      "noMigration": true,
+      "allBusinessRowsUnchanged": true,
+      "businessTables": 20,
+      "integrity": "ok"
+    },
+    "clipboardSupportedOrTested": false
+  },
+  "humanUi": {
+    "status": "USER_SELECTED_ID_DISPLAY_ONLY",
+    "userReported": "看不到代码块复制图标",
+    "userDecision": "不要跳转，保留 ID 展示即可",
+    "nativeCopyAcceptance": "FAILED_UNAVAILABLE_ICON",
+    "automaticCopyInCurrentScope": false,
+    "serverCallbackForCopy": false,
+    "newMobileCopyTestRequired": false
+  },
+  "previousTrial": {
+    "startedAt": "2026-09-23T08:37:34.521Z",
+    "elapsedHours": 0.097,
+    "status": "ENDED_EARLY_FOR_USER_SELECTED_ID_DISPLAY",
+    "countsAsPassed": false,
+    "report": ".artifacts/deployments/session-navigation-20260923-r03/trial-before.json"
+  },
+  "currentTrial": {
+    "status": "ARCHIVED_FOR_NAVIGATION_CARDS_UPGRADE",
+    "startedAt": "2026-09-23T08:44:19.346Z",
+    "earliestReviewAt": "2026-09-24T08:44:19.346Z",
+    "skippedManualEvidence": [
+      {
+        "case": "user-login-autostart",
+        "status": "SKIPPED_BY_USER",
+        "recordedAt": "2026-09-20T09:31:53.793Z",
+        "countsAsPassed": false
+      }
+    ],
+    "automaticAcceptance": false,
+    "report": ".artifacts/deployments/session-navigation-20260923-r03/trial-new.json"
+  },
+  "sourceSHA256": {
+    "src/feishu/card-layout.ts": "9be537d3c5c91cb225ed43b7ce227d8f55c1651e029b88171ac13207ea74c1d4",
+    "src/feishu/result-pages.ts": "234aab74be5b57e8d688b7aa04bf95d806c3c270476088e8b8ebcefb2981df9f",
+    "src/feishu/session-cards.ts": "140f028a8a81aee91d0692bf5cc6d308164eb3b75b1432aa870518ce600bc887",
+    "src/feishu/task-layout.ts": "2caa347fc87e9830ccf50cc541f8f178207ba25eeb3da812045fec13d4fe17b3",
+    "src/feishu/conversation-ui.ts": "cd026fea43706dfdeead2c71dc3a16957b9a74f1be00b8632f2393cc04666dfc",
+    "src/feishu/context-panel.ts": "e596a6aea600d67f1ec6721320e6390fc7aab5fb9ea8e6d507ab9b14fc8b8239",
+    "src/feishu/commands.ts": "e82e514f6c38d663b0fd776998f3497547c4634c4b445a0a5955858fd61c7ceb",
+    "src/feishu/inbound.ts": "38e922d7808e7197805595cd3f91ade608361db991ef8b9b3c02975d53fff1b7",
+    "src/feishu/sender.ts": "c183541382e912c0b405cc547a4ee05996933dfc736216da6365789afbc86a60",
+    "src/codex/schemas.ts": "2f5a31df0ac52883377d127f39d6343b4884eee09bbd8305ac61d50ee70aca35",
+    "src/persistence/migrate.ts": "c25bfdb2fab4c6ffb04cd4c787958c3a26035b3809a846f36b7fc7a1342c4822",
+    "src/persistence/migrations/008_session_navigation.sql": "3ccaa0a1cdd9ca60e64e0ef7870ab4eae592bbc939ec1a5636c9e98b3c25db38",
+    "tests/session-navigation.test.mjs": "0f34b84a2b42808ae3139f0f80f52b493b13328effd54d91b58b403fd07a8c73",
+    "tests/feishu-gateway.test.mjs": "7e5c091629d43522287d7d332c34158bb7b73098f851ebb59b0f46b7b53997a7"
+  },
+  "revision": 3,
+  "priorCopyAcceptance": {
+    "at": "2026-09-23T08:31:37.573Z",
+    "status": "PASS_USER_MOBILE_AND_REAL_CALLBACK_RECEIPTS",
+    "userReported": "BUTTON_BORDERS_NORMAL_AND_COMPLETE_ID_COPIED",
+    "listCommandProcessed": true,
+    "copyCallbackProcessed": true,
+    "bothDelivered": true,
+    "bothRemoteReceiptsVerified": true,
+    "exactTaskAndThreadIdsInSeparateCodeBlocks": true,
+    "allListButtonsBordered": true,
+    "productionTaskCount": 15,
+    "noNewTasks": true,
+    "selectionUnchanged": true,
+    "schema": 8,
+    "servicesReady": true,
+    "feishuConnected": true,
+    "buildMatchesEvidence": true,
+    "scope": "TWO_STEP_CODE_BLOCK_COPY_ONLY_NOT_DIRECT_COPY",
+    "correction": "USER_REJECTED_INTERMEDIATE_ID_CARD"
+  },
+  "supersededBy": {
+    "feature": "project-help-feedback-and-task-list-cards",
+    "recordedAt": "2026-09-23T09:06:11.301Z",
+    "schema": 9,
+    "evidence": "docs/gates/navigation-cards-evidence.json"
+  }
+}

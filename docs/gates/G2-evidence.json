@@ -1,0 +1,1264 @@
+{
+  "date": "2026-09-17",
+  "scope": "G2 candidate evaluation promoted after schema regeneration; no Feishu/GUI coverage",
+  "promotedBaseline": {
+    "milestone": "M1",
+    "node": "24.15.0",
+    "pnpm": "11.20.0",
+    "codex": "0.154.0-alpha.6.2",
+    "codexBinary": "/Applications/ChatGPT.app/Contents/Resources/codex",
+    "protocolExperimental": true
+  },
+  "runs": {
+    "oldVersionFailure": {
+      "runId": "2026-09-17T02-00-49.450Z-cd0e01cb",
+      "date": "2026-09-17T02:00:49.451Z",
+      "baseline": {
+        "codex": "codex-cli 0.144.6",
+        "node": "v24.15.0",
+        "platform": "darwin",
+        "architecture": "arm64"
+      },
+      "homeMode": "existing",
+      "live": true,
+      "cases": [
+        {
+          "transport": "unix",
+          "name": "handshake",
+          "status": "PASS",
+          "durationMs": 646,
+          "evidence": {
+            "ready": true,
+            "initializeId": 0,
+            "privateTransport": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "integration-isolation",
+          "status": "PASS",
+          "durationMs": 162,
+          "evidence": {
+            "enabledMcpServers": 0,
+            "hooksDisabled": true,
+            "pluginsDisabled": true,
+            "appsDisabled": true,
+            "agentsDisabled": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "thread-list",
+          "status": "PASS",
+          "durationMs": 55,
+          "evidence": {
+            "count": 50,
+            "hasCursor": true,
+            "historyModes": ["legacy", "paginated"]
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "historical-read",
+          "status": "PASS",
+          "durationMs": 30,
+          "evidence": {
+            "turnCount": 1,
+            "statuses": ["interrupted"],
+            "contentRecorded": false
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "start-request-rejected",
+          "status": "PASS",
+          "durationMs": 6,
+          "evidence": {
+            "phase": "rpc-rejection",
+            "turnCreated": false
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "account-status",
+          "status": "PASS",
+          "durationMs": 2,
+          "evidence": {
+            "accountType": "chatgpt",
+            "requiresOpenaiAuth": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "observed-failed-terminal",
+          "status": "PASS",
+          "evidence": {
+            "status": "failed",
+            "itemTypes": ["userMessage"],
+            "hasError": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "completed-and-history",
+          "status": "BLOCKED",
+          "durationMs": 112805,
+          "error": {
+            "type": "Error",
+            "message": "Model turn failed; inspect private error evidence"
+          }
+        }
+      ],
+      "cleanup": [
+        {
+          "transport": "unix",
+          "stage": "config-discovery",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "unix",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "unix",
+          "temporaryDirectoryRemoved": true,
+          "userHistoryDeleted": false
+        }
+      ],
+      "scope": "G2 probe; PASS cases do not imply full milestone PASS",
+      "status": "BLOCKED"
+    },
+    "isolatedTransports": {
+      "runId": "2026-09-17T02-13-16.889Z-5e520b85",
+      "date": "2026-09-17T02:13:16.892Z",
+      "baseline": {
+        "codex": "codex-cli 0.154.0-alpha.6.2",
+        "binary": "/Applications/ChatGPT.app/Contents/Resources/codex",
+        "generatedProtocolVersion": "0.144.6",
+        "candidate": true,
+        "node": "v24.15.0",
+        "platform": "darwin",
+        "architecture": "arm64"
+      },
+      "homeMode": "isolated",
+      "live": false,
+      "cases": [
+        {
+          "transport": "ws",
+          "name": "handshake",
+          "status": "PASS",
+          "durationMs": 116,
+          "evidence": {
+            "ready": true,
+            "initializeId": 0,
+            "privateTransport": true
+          }
+        },
+        {
+          "transport": "ws",
+          "name": "integration-isolation",
+          "status": "PASS",
+          "durationMs": 4,
+          "evidence": {
+            "enabledMcpServers": 0,
+            "hooksDisabled": true,
+            "pluginsDisabled": true,
+            "appsDisabled": true,
+            "agentsDisabled": true
+          }
+        },
+        {
+          "transport": "ws",
+          "name": "health",
+          "status": "PASS",
+          "durationMs": 18,
+          "evidence": {
+            "statuses": [200, 200]
+          }
+        },
+        {
+          "transport": "ws",
+          "name": "thread-list",
+          "status": "PASS",
+          "durationMs": 1,
+          "evidence": {
+            "count": 0,
+            "hasCursor": false,
+            "historyModes": []
+          }
+        },
+        {
+          "transport": "ws",
+          "name": "start-request-rejected",
+          "status": "PASS",
+          "durationMs": 1,
+          "evidence": {
+            "phase": "rpc-rejection",
+            "turnCreated": false
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "handshake",
+          "status": "PASS",
+          "durationMs": 103,
+          "evidence": {
+            "ready": true,
+            "initializeId": 0,
+            "privateTransport": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "integration-isolation",
+          "status": "PASS",
+          "durationMs": 2,
+          "evidence": {
+            "enabledMcpServers": 0,
+            "hooksDisabled": true,
+            "pluginsDisabled": true,
+            "appsDisabled": true,
+            "agentsDisabled": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "thread-list",
+          "status": "PASS",
+          "durationMs": 1,
+          "evidence": {
+            "count": 0,
+            "hasCursor": false,
+            "historyModes": []
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "start-request-rejected",
+          "status": "PASS",
+          "durationMs": 0,
+          "evidence": {
+            "phase": "rpc-rejection",
+            "turnCreated": false
+          }
+        }
+      ],
+      "cleanup": [
+        {
+          "transport": "ws",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "ws",
+          "temporaryDirectoryRemoved": true,
+          "userHistoryDeleted": false
+        },
+        {
+          "transport": "unix",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "unix",
+          "temporaryDirectoryRemoved": true,
+          "userHistoryDeleted": false
+        }
+      ],
+      "scope": "G2 probe; PASS cases do not imply full milestone PASS",
+      "status": "PASS"
+    },
+    "existingHistory": {
+      "runId": "2026-09-17T02-15-06.317Z-cfa84fc8",
+      "date": "2026-09-17T02:15:06.318Z",
+      "baseline": {
+        "codex": "codex-cli 0.154.0-alpha.6.2",
+        "binary": "/Applications/ChatGPT.app/Contents/Resources/codex",
+        "generatedProtocolVersion": "0.144.6",
+        "candidate": true,
+        "node": "v24.15.0",
+        "platform": "darwin",
+        "architecture": "arm64"
+      },
+      "homeMode": "existing",
+      "live": false,
+      "cases": [
+        {
+          "transport": "ws",
+          "name": "handshake",
+          "status": "PASS",
+          "durationMs": 110,
+          "evidence": {
+            "ready": true,
+            "initializeId": 0,
+            "privateTransport": true
+          }
+        },
+        {
+          "transport": "ws",
+          "name": "integration-isolation",
+          "status": "PASS",
+          "durationMs": 116,
+          "evidence": {
+            "enabledMcpServers": 0,
+            "hooksDisabled": true,
+            "pluginsDisabled": true,
+            "appsDisabled": true,
+            "agentsDisabled": true
+          }
+        },
+        {
+          "transport": "ws",
+          "name": "health",
+          "status": "PASS",
+          "durationMs": 13,
+          "evidence": {
+            "statuses": [200, 200]
+          }
+        },
+        {
+          "transport": "ws",
+          "name": "thread-list",
+          "status": "PASS",
+          "durationMs": 21,
+          "evidence": {
+            "count": 50,
+            "hasCursor": true,
+            "historyModes": ["legacy", "paginated"]
+          }
+        },
+        {
+          "transport": "ws",
+          "name": "historical-read",
+          "status": "PASS",
+          "durationMs": 3,
+          "evidence": {
+            "turnCount": 1,
+            "statuses": ["interrupted"],
+            "contentRecorded": false
+          }
+        },
+        {
+          "transport": "ws",
+          "name": "paginated-history-read",
+          "status": "PASS",
+          "durationMs": 80,
+          "evidence": {
+            "turnCount": 2,
+            "statuses": ["interrupted", "completed"],
+            "contentRecorded": false,
+            "method": "thread/turns/list",
+            "itemsView": "full"
+          }
+        },
+        {
+          "transport": "ws",
+          "name": "start-request-rejected",
+          "status": "PASS",
+          "durationMs": 1,
+          "evidence": {
+            "phase": "rpc-rejection",
+            "turnCreated": false
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "handshake",
+          "status": "PASS",
+          "durationMs": 103,
+          "evidence": {
+            "ready": true,
+            "initializeId": 0,
+            "privateTransport": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "integration-isolation",
+          "status": "PASS",
+          "durationMs": 133,
+          "evidence": {
+            "enabledMcpServers": 0,
+            "hooksDisabled": true,
+            "pluginsDisabled": true,
+            "appsDisabled": true,
+            "agentsDisabled": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "thread-list",
+          "status": "PASS",
+          "durationMs": 6,
+          "evidence": {
+            "count": 50,
+            "hasCursor": true,
+            "historyModes": ["legacy", "paginated"]
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "historical-read",
+          "status": "PASS",
+          "durationMs": 2,
+          "evidence": {
+            "turnCount": 1,
+            "statuses": ["interrupted"],
+            "contentRecorded": false
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "paginated-history-read",
+          "status": "PASS",
+          "durationMs": 41,
+          "evidence": {
+            "turnCount": 2,
+            "statuses": ["interrupted", "completed"],
+            "contentRecorded": false,
+            "method": "thread/turns/list",
+            "itemsView": "full"
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "start-request-rejected",
+          "status": "PASS",
+          "durationMs": 0,
+          "evidence": {
+            "phase": "rpc-rejection",
+            "turnCreated": false
+          }
+        }
+      ],
+      "cleanup": [
+        {
+          "transport": "ws",
+          "stage": "config-discovery",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "ws",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "ws",
+          "temporaryDirectoryRemoved": true,
+          "userHistoryDeleted": false
+        },
+        {
+          "transport": "unix",
+          "stage": "config-discovery",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "unix",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "unix",
+          "temporaryDirectoryRemoved": true,
+          "userHistoryDeleted": false
+        }
+      ],
+      "scope": "G2 probe; PASS cases do not imply full milestone PASS",
+      "status": "PASS"
+    },
+    "completed": {
+      "runId": "2026-09-17T02-06-20.704Z-d9c1ebe1",
+      "date": "2026-09-17T02:06:20.705Z",
+      "baseline": {
+        "codex": "codex-cli 0.154.0-alpha.6.2",
+        "binary": "/Applications/ChatGPT.app/Contents/Resources/codex",
+        "generatedProtocolVersion": "0.144.6",
+        "candidate": true,
+        "node": "v24.15.0",
+        "platform": "darwin",
+        "architecture": "arm64"
+      },
+      "homeMode": "existing",
+      "live": true,
+      "cases": [
+        {
+          "transport": "unix",
+          "name": "handshake",
+          "status": "PASS",
+          "durationMs": 212,
+          "evidence": {
+            "ready": true,
+            "initializeId": 0,
+            "privateTransport": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "integration-isolation",
+          "status": "PASS",
+          "durationMs": 130,
+          "evidence": {
+            "enabledMcpServers": 0,
+            "hooksDisabled": true,
+            "pluginsDisabled": true,
+            "appsDisabled": true,
+            "agentsDisabled": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "thread-list",
+          "status": "PASS",
+          "durationMs": 23,
+          "evidence": {
+            "count": 50,
+            "hasCursor": true,
+            "historyModes": ["legacy", "paginated"]
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "historical-read",
+          "status": "PASS",
+          "durationMs": 4,
+          "evidence": {
+            "turnCount": 1,
+            "statuses": ["completed"],
+            "contentRecorded": false
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "start-request-rejected",
+          "status": "PASS",
+          "durationMs": 3,
+          "evidence": {
+            "phase": "rpc-rejection",
+            "turnCreated": false
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "account-status",
+          "status": "PASS",
+          "durationMs": 2,
+          "evidence": {
+            "accountType": "chatgpt",
+            "requiresOpenaiAuth": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "completed-and-history",
+          "status": "PASS",
+          "durationMs": 13270,
+          "evidence": {
+            "terminal": {
+              "status": "completed",
+              "itemTypes": ["agentMessage", "userMessage"],
+              "hasError": false
+            },
+            "persistedTurn": true
+          }
+        }
+      ],
+      "cleanup": [
+        {
+          "transport": "unix",
+          "stage": "config-discovery",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "unix",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "unix",
+          "temporaryDirectoryRemoved": true,
+          "userHistoryDeleted": false
+        }
+      ],
+      "scope": "G2 probe; PASS cases do not imply full milestone PASS",
+      "status": "PASS"
+    },
+    "controls": {
+      "runId": "2026-09-17T02-16-34.742Z-be901abe",
+      "date": "2026-09-17T02:16:34.743Z",
+      "baseline": {
+        "codex": "codex-cli 0.154.0-alpha.6.2",
+        "binary": "/Applications/ChatGPT.app/Contents/Resources/codex",
+        "generatedProtocolVersion": "0.144.6",
+        "candidate": true,
+        "node": "v24.15.0",
+        "platform": "darwin",
+        "architecture": "arm64"
+      },
+      "homeMode": "existing",
+      "live": true,
+      "cases": [
+        {
+          "transport": "unix",
+          "name": "handshake",
+          "status": "PASS",
+          "durationMs": 108,
+          "evidence": {
+            "ready": true,
+            "initializeId": 0,
+            "privateTransport": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "integration-isolation",
+          "status": "PASS",
+          "durationMs": 118,
+          "evidence": {
+            "enabledMcpServers": 0,
+            "hooksDisabled": true,
+            "pluginsDisabled": true,
+            "appsDisabled": true,
+            "agentsDisabled": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "thread-list",
+          "status": "PASS",
+          "durationMs": 20,
+          "evidence": {
+            "count": 50,
+            "hasCursor": true,
+            "historyModes": ["legacy", "paginated"]
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "historical-read",
+          "status": "PASS",
+          "durationMs": 3,
+          "evidence": {
+            "turnCount": 1,
+            "statuses": ["interrupted"],
+            "contentRecorded": false
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "paginated-history-read",
+          "status": "PASS",
+          "durationMs": 63,
+          "evidence": {
+            "turnCount": 2,
+            "statuses": ["interrupted", "completed"],
+            "contentRecorded": false,
+            "method": "thread/turns/list",
+            "itemsView": "full"
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "start-request-rejected",
+          "status": "PASS",
+          "durationMs": 0,
+          "evidence": {
+            "phase": "rpc-rejection",
+            "turnCreated": false
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "account-status",
+          "status": "PASS",
+          "durationMs": 3,
+          "evidence": {
+            "accountType": "chatgpt",
+            "requiresOpenaiAuth": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "steer",
+          "status": "PASS",
+          "durationMs": 79061,
+          "evidence": {
+            "sameTurn": true,
+            "terminal": {
+              "status": "completed",
+              "itemTypes": [
+                "agentMessage",
+                "userMessage",
+                "agentMessage",
+                "commandExecution",
+                "userMessage"
+              ],
+              "hasError": false
+            },
+            "markerObserved": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "interrupt",
+          "status": "PASS",
+          "durationMs": 3684,
+          "evidence": {
+            "status": "interrupted",
+            "itemTypes": ["userMessage", "agentMessage"],
+            "hasError": false
+          }
+        }
+      ],
+      "cleanup": [
+        {
+          "transport": "unix",
+          "stage": "config-discovery",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "unix",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "unix",
+          "temporaryDirectoryRemoved": true,
+          "userHistoryDeleted": false
+        }
+      ],
+      "scope": "G2 probe; PASS cases do not imply full milestone PASS",
+      "status": "PASS"
+    },
+    "approvals": {
+      "runId": "2026-09-17T02-11-43.484Z-dbd4bd56",
+      "date": "2026-09-17T02:11:43.485Z",
+      "baseline": {
+        "codex": "codex-cli 0.154.0-alpha.6.2",
+        "binary": "/Applications/ChatGPT.app/Contents/Resources/codex",
+        "generatedProtocolVersion": "0.144.6",
+        "candidate": true,
+        "node": "v24.15.0",
+        "platform": "darwin",
+        "architecture": "arm64"
+      },
+      "homeMode": "existing",
+      "live": true,
+      "cases": [
+        {
+          "transport": "unix",
+          "name": "handshake",
+          "status": "PASS",
+          "durationMs": 216,
+          "evidence": {
+            "ready": true,
+            "initializeId": 0,
+            "privateTransport": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "integration-isolation",
+          "status": "PASS",
+          "durationMs": 123,
+          "evidence": {
+            "enabledMcpServers": 0,
+            "hooksDisabled": true,
+            "pluginsDisabled": true,
+            "appsDisabled": true,
+            "agentsDisabled": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "thread-list",
+          "status": "PASS",
+          "durationMs": 23,
+          "evidence": {
+            "count": 50,
+            "hasCursor": true,
+            "historyModes": ["legacy", "paginated"]
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "historical-read",
+          "status": "PASS",
+          "durationMs": 4,
+          "evidence": {
+            "turnCount": 1,
+            "statuses": ["completed"],
+            "contentRecorded": false
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "start-request-rejected",
+          "status": "PASS",
+          "durationMs": 1,
+          "evidence": {
+            "phase": "rpc-rejection",
+            "turnCreated": false
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "account-status",
+          "status": "PASS",
+          "durationMs": 2,
+          "evidence": {
+            "accountType": "chatgpt",
+            "requiresOpenaiAuth": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "approval-accept",
+          "status": "PASS",
+          "durationMs": 121945,
+          "evidence": {
+            "requestedDecision": "accept",
+            "decision": "accept",
+            "requestIdType": "number",
+            "requestIdIsZero": true,
+            "terminal": {
+              "status": "completed",
+              "itemTypes": ["agentMessage", "userMessage", "agentMessage", "commandExecution"],
+              "hasError": false
+            },
+            "commandResult": [
+              {
+                "status": "completed",
+                "exitCode": 0,
+                "markerObserved": true
+              }
+            ]
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "approval-decline",
+          "status": "PASS",
+          "durationMs": 116284,
+          "evidence": {
+            "requestedDecision": "decline",
+            "decision": "cancel",
+            "requestIdType": "number",
+            "requestIdIsZero": false,
+            "terminal": {
+              "status": "interrupted",
+              "itemTypes": ["userMessage", "agentMessage", "commandExecution"],
+              "hasError": false
+            },
+            "commandResult": [
+              {
+                "status": "declined",
+                "exitCode": null,
+                "markerObserved": false
+              }
+            ]
+          }
+        }
+      ],
+      "cleanup": [
+        {
+          "transport": "unix",
+          "stage": "config-discovery",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "unix",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "unix",
+          "temporaryDirectoryRemoved": true,
+          "userHistoryDeleted": false
+        }
+      ],
+      "scope": "G2 probe; PASS cases do not imply full milestone PASS",
+      "status": "PASS"
+    },
+    "recovery": {
+      "runId": "2026-09-17T02-18-33.335Z-99f28d7e",
+      "date": "2026-09-17T02:18:33.337Z",
+      "baseline": {
+        "codex": "codex-cli 0.154.0-alpha.6.2",
+        "binary": "/Applications/ChatGPT.app/Contents/Resources/codex",
+        "generatedProtocolVersion": "0.144.6",
+        "candidate": true,
+        "node": "v24.15.0",
+        "platform": "darwin",
+        "architecture": "arm64"
+      },
+      "homeMode": "existing",
+      "live": true,
+      "cases": [
+        {
+          "transport": "unix",
+          "name": "handshake",
+          "status": "PASS",
+          "durationMs": 311,
+          "evidence": {
+            "ready": true,
+            "initializeId": 0,
+            "privateTransport": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "integration-isolation",
+          "status": "PASS",
+          "durationMs": 119,
+          "evidence": {
+            "enabledMcpServers": 0,
+            "hooksDisabled": true,
+            "pluginsDisabled": true,
+            "appsDisabled": true,
+            "agentsDisabled": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "thread-list",
+          "status": "PASS",
+          "durationMs": 23,
+          "evidence": {
+            "count": 50,
+            "hasCursor": true,
+            "historyModes": ["legacy", "paginated"]
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "historical-read",
+          "status": "PASS",
+          "durationMs": 3,
+          "evidence": {
+            "turnCount": 2,
+            "statuses": ["completed", "interrupted"],
+            "contentRecorded": false
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "paginated-history-read",
+          "status": "PASS",
+          "durationMs": 78,
+          "evidence": {
+            "turnCount": 2,
+            "statuses": ["interrupted", "completed"],
+            "contentRecorded": false,
+            "method": "thread/turns/list",
+            "itemsView": "full"
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "start-request-rejected",
+          "status": "PASS",
+          "durationMs": 1,
+          "evidence": {
+            "phase": "rpc-rejection",
+            "turnCreated": false
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "account-status",
+          "status": "PASS",
+          "durationMs": 2,
+          "evidence": {
+            "accountType": "chatgpt",
+            "requiresOpenaiAuth": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "reconnect-resume-subscription",
+          "status": "PASS",
+          "durationMs": 115895,
+          "evidence": {
+            "newConnectionEpoch": true,
+            "historyBackfilled": true,
+            "terminalOnNewConnection": {
+              "status": "completed",
+              "itemTypes": ["agentMessage", "commandExecution"],
+              "hasError": false
+            }
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "pending-request-disconnect",
+          "status": "PASS",
+          "durationMs": 207,
+          "evidence": {
+            "outcome": "unknown",
+            "pendingCleared": true,
+            "replayed": false
+          }
+        }
+      ],
+      "cleanup": [
+        {
+          "transport": "unix",
+          "stage": "config-discovery",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "unix",
+          "interruptedOwnedActiveTurn": false,
+          "fallback": "stop-owned-app-server"
+        },
+        {
+          "transport": "unix",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "unix",
+          "temporaryDirectoryRemoved": true,
+          "userHistoryDeleted": false
+        }
+      ],
+      "scope": "G2 probe; PASS cases do not imply full milestone PASS",
+      "status": "PASS"
+    },
+    "promotedDefaultSmoke": {
+      "runId": "2026-09-17T02-25-54.459Z-0c88f38a",
+      "date": "2026-09-17T02:25:54.460Z",
+      "baseline": {
+        "codex": "codex-cli 0.154.0-alpha.6.2",
+        "binary": "/Applications/ChatGPT.app/Contents/Resources/codex",
+        "generatedProtocolVersion": "0.154.0-alpha.6.2",
+        "candidate": false,
+        "node": "v24.15.0",
+        "platform": "darwin",
+        "architecture": "arm64"
+      },
+      "homeMode": "isolated",
+      "live": false,
+      "cases": [
+        {
+          "transport": "ws",
+          "name": "handshake",
+          "status": "PASS",
+          "durationMs": 110,
+          "evidence": {
+            "ready": true,
+            "initializeId": 0,
+            "privateTransport": true
+          }
+        },
+        {
+          "transport": "ws",
+          "name": "integration-isolation",
+          "status": "PASS",
+          "durationMs": 12,
+          "evidence": {
+            "enabledMcpServers": 0,
+            "hooksDisabled": true,
+            "pluginsDisabled": true,
+            "appsDisabled": true,
+            "agentsDisabled": true
+          }
+        },
+        {
+          "transport": "ws",
+          "name": "health",
+          "status": "PASS",
+          "durationMs": 14,
+          "evidence": {
+            "statuses": [200, 200]
+          }
+        },
+        {
+          "transport": "ws",
+          "name": "thread-list",
+          "status": "PASS",
+          "durationMs": 1,
+          "evidence": {
+            "count": 0,
+            "hasCursor": false,
+            "historyModes": []
+          }
+        },
+        {
+          "transport": "ws",
+          "name": "start-request-rejected",
+          "status": "PASS",
+          "durationMs": 0,
+          "evidence": {
+            "phase": "rpc-rejection",
+            "turnCreated": false
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "handshake",
+          "status": "PASS",
+          "durationMs": 103,
+          "evidence": {
+            "ready": true,
+            "initializeId": 0,
+            "privateTransport": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "integration-isolation",
+          "status": "PASS",
+          "durationMs": 2,
+          "evidence": {
+            "enabledMcpServers": 0,
+            "hooksDisabled": true,
+            "pluginsDisabled": true,
+            "appsDisabled": true,
+            "agentsDisabled": true
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "thread-list",
+          "status": "PASS",
+          "durationMs": 1,
+          "evidence": {
+            "count": 0,
+            "hasCursor": false,
+            "historyModes": []
+          }
+        },
+        {
+          "transport": "unix",
+          "name": "start-request-rejected",
+          "status": "PASS",
+          "durationMs": 0,
+          "evidence": {
+            "phase": "rpc-rejection",
+            "turnCreated": false
+          }
+        }
+      ],
+      "cleanup": [
+        {
+          "transport": "ws",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "ws",
+          "temporaryDirectoryRemoved": true,
+          "userHistoryDeleted": false
+        },
+        {
+          "transport": "unix",
+          "ownedProcessExited": true,
+          "code": 0,
+          "signal": null
+        },
+        {
+          "transport": "unix",
+          "temporaryDirectoryRemoved": true,
+          "userHistoryDeleted": false
+        }
+      ],
+      "scope": "G2 probe; PASS cases do not imply full milestone PASS",
+      "status": "PASS"
+    }
+  },
+  "schemaDiff": [
+    {
+      "name": "ThreadStartParams",
+      "added": ["projectId"],
+      "removed": [],
+      "requiredAdded": []
+    },
+    {
+      "name": "ThreadResumeParams",
+      "added": [],
+      "removed": [],
+      "requiredAdded": []
+    },
+    {
+      "name": "TurnStartParams",
+      "added": ["cyberAccessProgram", "serviceTierForTurn", "toolOutput", "turnTrigger"],
+      "removed": [],
+      "requiredAdded": []
+    },
+    {
+      "name": "TurnSteerParams",
+      "added": [],
+      "removed": [],
+      "requiredAdded": []
+    },
+    {
+      "name": "TurnInterruptParams",
+      "added": [],
+      "removed": [],
+      "requiredAdded": []
+    },
+    {
+      "name": "Thread",
+      "added": [
+        "canAcceptDirectInput",
+        "daybreakEnabled",
+        "environments",
+        "model",
+        "originator",
+        "projectId",
+        "reasoningEffort",
+        "section",
+        "sectionEnteredAt"
+      ],
+      "removed": [],
+      "requiredAdded": ["projectId"]
+    },
+    {
+      "name": "Turn",
+      "added": [],
+      "removed": [],
+      "requiredAdded": []
+    },
+    {
+      "name": "TurnCompletedNotification",
+      "added": [],
+      "removed": [],
+      "requiredAdded": []
+    }
+  ],
+  "engineeringValidation": {
+    "verify": "PASS",
+    "testFiles": 6,
+    "tests": 35,
+    "protocolCheck": "PASS",
+    "sourceDoctor": "PASS",
+    "configCheck": "PASS",
+    "build": "PASS"
+  }
+}

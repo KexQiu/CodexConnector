@@ -1,0 +1,148 @@
+{
+  "feature": "complete-session-display-and-independent-quota-command",
+  "recordedAt": "2026-09-23T07:31:19.831Z",
+  "status": "DEPLOYED_REAL_DEFAULTS_HISTORY_MODEL_TOKEN_EVENTS_AND_CANONICAL_UPDATE_VERIFIED_PHONE_COMMAND_CHECK_PENDING",
+  "validation": {
+    "testFiles": 20,
+    "tests": 277,
+    "addedTests": 16,
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "format": "PASS",
+    "candidateBuild": "PASS_ISOLATED_BEFORE_SWITCH",
+    "fixtures": "REAL_SQLITE_LOCAL_RPC_AND_FILESYSTEM"
+  },
+  "behavior": {
+    "currentCommand": "PROJECT_TOPIC_STATUS_MODEL_EFFORT_RECENT_INPUT_AND_WINDOW",
+    "newTopic": "PROJECT_DEFAULT_MODEL_AND_EFFORT",
+    "history": "OWNED_LOCAL_ROLLOUT_BOUNDED_NUMERIC_SNAPSHOT",
+    "quotaCommand": "/额度",
+    "quotaInPanel": false,
+    "quotaInTaskDetails": false,
+    "noExactContextPercent": true
+  },
+  "realReadonly": {
+    "status": "PASS_REAL_APP_SERVER_AND_EXISTING_ROLLOUT",
+    "defaults": {
+      "model": "gpt-6-astra",
+      "reasoningEffort": "xhigh"
+    },
+    "historicalInputTokens": 19571,
+    "historicalModelContextWindow": 258400,
+    "quotaStatus": "ok",
+    "threadResumeCalled": false,
+    "productionSelectionChanged": false,
+    "report": ".artifacts/session-display/r01/live-readonly.json"
+  },
+  "realModel": {
+    "status": "PASS_LIVE_WORKER_MODEL_AND_TOKEN_NOTIFICATION",
+    "model": "gpt-6-astra",
+    "reasoningEffort": "xhigh",
+    "inputTokens": 19569,
+    "modelContextWindow": 258400,
+    "tokenEvents": 1,
+    "fixtureTasksCreated": 1,
+    "productionTasksCreated": 0,
+    "toolsUsed": false,
+    "resultMarkerMatched": true,
+    "feishuInbound": false,
+    "cacheSurvivesReopen": true,
+    "threadUnsubscribed": true,
+    "report": ".artifacts/session-display/r01/live-model.json"
+  },
+  "migration": {
+    "at": "2026-09-23T07:27:56.958Z",
+    "status": "PASS_PRODUCTION_V6_TO_V7",
+    "from": 6,
+    "to": 7,
+    "businessTables": 19,
+    "allOriginalRowsUnchanged": true,
+    "integrity": "ok",
+    "foreignKeys": 0,
+    "privateCopy": "PASS",
+    "report": ".artifacts/deployments/session-display-20260923-r01/migration-acceptance.json"
+  },
+  "deployment": {
+    "buildHash": "19066d3f2c4d375792f4fc443827a19f6132e05db493c6879a78a8cea98509fe",
+    "previousBuildHash": "9ef713919fbe579dac781bec184efba423feb11e7bc38a62f1dfb061cc320d12",
+    "configUnchanged": true,
+    "notifyEnabled": false,
+    "liveCapture": {
+      "at": "2026-09-23T07:28:41.138Z",
+      "status": "PASS_REAL_DEPLOYMENT_AND_CANONICAL_UPDATE",
+      "schemaVersion": 7,
+      "ready": true,
+      "feishuConnected": true,
+      "samePanel": true,
+      "sameMessage": true,
+      "operation": "update",
+      "version": 205,
+      "taskCount": 15,
+      "selectionUnchanged": true,
+      "newTopicDefaultShown": true,
+      "quotaAbsentFromPanel": true,
+      "remoteGetSucceeded": true,
+      "remoteGetScope": "IM_GET_PREVIEW_NOT_HUMAN_UI",
+      "defaults": [
+        {
+          "model": "gpt-6-astra",
+          "reasoningEffort": "xhigh",
+          "observedAt": 1790148492677
+        }
+      ]
+    },
+    "manualBackup": "PASS_V7_NOT_AUTOMATIC_COVERAGE",
+    "privateEvidenceRoot": ".artifacts/deployments/session-display-20260923-r01"
+  },
+  "phoneCommands": {
+    "status": "PENDING_USER",
+    "expected": ["/当前", "/额度", "/状态 76356b42"],
+    "simulatedCommandIntegration": "PASS"
+  },
+  "scope": {
+    "liveTokenEvents": "PASS_REAL",
+    "historicalBackfill": "PASS_REAL",
+    "newTopicDefault": "PASS_REAL",
+    "compaction": "SIMULATED_NOT_REAL",
+    "accountSwitch": "SIMULATED_NOT_REAL",
+    "humanUi": "PENDING",
+    "historyFormat": "UNSTABLE_LOCAL_JSONL_ADAPTER_FAILS_CLOSED"
+  },
+  "previousTrial": {
+    "startedAt": "2026-09-23T04:12:03.131Z",
+    "elapsedHours": 3.257,
+    "status": "ENDED_EARLY_FOR_AUTHORIZED_SESSION_DISPLAY_DEPLOYMENT",
+    "countsAsPassed": false,
+    "report": ".artifacts/deployments/session-display-20260923-r01/trial-before.json"
+  },
+  "currentTrial": {
+    "status": "OBSERVING",
+    "startedAt": "2026-09-23T07:29:44.674Z",
+    "earliestReviewAt": "2026-09-24T07:29:44.674Z",
+    "automaticAcceptance": false,
+    "skippedManualEvidence": [
+      {
+        "case": "user-login-autostart",
+        "status": "SKIPPED_BY_USER",
+        "recordedAt": "2026-09-20T09:31:53.793Z",
+        "countsAsPassed": false
+      }
+    ],
+    "report": ".artifacts/deployments/session-display-20260923-r01/trial-new.json"
+  },
+  "sourceSHA256": {
+    "src/tasks/status-metrics.ts": "71d32a86876fb9069612f64f5bf4902a22b51bc8df08d7eaf32f124a54555cce",
+    "src/tasks/session-usage.ts": "47a98114dba2b31749b5b71660d73f1fd89415ce7a660d546d177cafa46b24ee",
+    "src/tasks/worker.ts": "09cfb87a71084107ac566b9c7fd39ea9e84a5a97adb746005af1e147a1768131",
+    "src/feishu/context-panel.ts": "95272795cf694ed3c77fe6fcb2cd41911662edafdb364805295c6a287862f60f",
+    "src/feishu/commands.ts": "8076e8be1f71048d6671d5cd04905980503c39fdd253687e6492a3314faf6cd9",
+    "src/persistence/migrate.ts": "ac8ccabf868d857003646f46fb5d3729d322f6dcefa986386d383e1147215507",
+    "src/persistence/migrations/007_project_metrics.sql": "3966bea45c4d956108440d2dc17badd049ef5840bb193d2a0bad49a1deb66392",
+    "tests/session-display.test.mjs": "3c7166675eeb8a138d55d377b0df41281a1d280354862dde0908fa659eb27069",
+    "tests/status-metrics.test.mjs": "3ba04136b4737b8f992ef40a113f30333bff199186c51c4d8e06b2e0ca84823d"
+  },
+  "layoutSupersededBy": {
+    "evidence": "docs/gates/card-layout-evidence.json",
+    "at": "2026-09-23T08:05:47.984Z"
+  }
+}

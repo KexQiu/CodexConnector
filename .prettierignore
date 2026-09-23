@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+.pnpm-store/
+.artifacts/
+src/codex/generated/
+schemas/codex/
+pnpm-lock.yaml
+config/*.local.json

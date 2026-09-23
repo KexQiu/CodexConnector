@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "dataDir": "/Users/YOUR_USER/.codex-feishu",
+  "codex": {
+    "binary": "/Applications/ChatGPT.app/Contents/Resources/codex",
+    "endpoint": "unix:///Users/YOUR_USER/.codex-feishu/app-server.sock",
+    "sandbox": "workspace-write",
+    "approvalPolicy": "on-request",
+    "approvalsReviewer": "user"
+  },
+  "feishu": {
+    "appId": "cli_REPLACE_ME",
+    "tenantKey": "REPLACE_ME",
+    "allowedOpenId": "ou_REPLACE_ME",
+    "credentialsFile": "/Users/YOUR_USER/.codex-feishu/credentials.json"
+  },
+  "maxConcurrentTasks": 1,
+  "projects": [
+    {
+      "key": "example",
+      "name": "Example project",
+      "root": "/absolute/path/to/checkout",
+      "remoteWrite": false
+    }
+  ]
+}

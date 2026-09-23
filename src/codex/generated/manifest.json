@@ -1,0 +1,12 @@
+{
+  "codexVersion": "0.155.0-alpha.9.2",
+  "experimental": true,
+  "commands": [
+    "codex app-server generate-ts --experimental --out <temporary directory>",
+    "codex app-server generate-json-schema --experimental --out <temporary directory>"
+  ],
+  "postprocess": "Resolve relative TypeScript imports/exports to .js or /index.js for NodeNext. No field changes.",
+  "typeFileCount": 865,
+  "typesSha256": "43e14fd32531c85a4a045269971347f39634579ba49b816032539e1a417ccacd",
+  "schemaSha256": "6eb6205c196729896ac3cff340d3a5eb947d6f99e10cca83383766aeae28f31c"
+}

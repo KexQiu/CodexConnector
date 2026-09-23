@@ -1,0 +1,120 @@
+{
+  "milestone": "M6",
+  "status": "IN_PROGRESS",
+  "recordedAt": "2026-09-20T12:20:17.952Z",
+  "implementation": {
+    "notifyBridge": true,
+    "originalNotifierPreserved": true,
+    "stdinStrategy": "inherit-without-reading",
+    "loopbackReceiver": true,
+    "durableSpool": true,
+    "atomicInboxOutbox": true,
+    "gatewayThreadSuppression": true,
+    "configurationBackupAndRollback": true,
+    "schemaVersion": 3,
+    "migrationRequired": false,
+    "supportedEvents": ["agent-turn-complete"],
+    "failureAndInterruptEnabled": false
+  },
+  "localValidation": {
+    "status": "PASS",
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "format": "PASS",
+    "candidateBuild": "PASS",
+    "testFiles": 17,
+    "tests": 206,
+    "notifyTests": 27,
+    "notifyTestsPassed": 27,
+    "gui": "SIMULATED",
+    "feishu": "SIMULATED",
+    "sqliteFilesystemProcessesAndLoopback": "REAL",
+    "liveProbeCliHelp": "PASS",
+    "liveProbeActualRun": "PASS_COMPLETION_DELIVERY_API_AND_USER_CONFIRMATION",
+    "markerRegression": {
+      "tests": 27,
+      "passed": 27,
+      "lint": "PASS",
+      "rawArgvPreserved": true,
+      "markerFormat": "alphanumeric"
+    },
+    "regressionRun": {
+      "status": "PASS",
+      "testFiles": 17,
+      "tests": 206,
+      "command": "pnpm test",
+      "environment": "local-loopback-and-unix-sockets-enabled",
+      "precedingSandboxAttempt": "Stopped after listen EPERM; not counted as a functional failure or pass."
+    }
+  },
+  "G3": {
+    "status": "PARTIAL",
+    "capturePlan": ".artifacts/m6/gui-capture-r02",
+    "captureInstalled": false,
+    "completion": "PASS_GUI_COMPLETION_AND_USER_VISIBLE_FEISHU_DELIVERY",
+    "interruption": "NOT_OBSERVED",
+    "failure": "NOT_OBSERVED",
+    "originalNotificationRegression": "PENDING_USER_OBSERVATION",
+    "realFeishuDelivery": "PASS_API_RECEIPT_AND_USER_CONFIRMATION",
+    "realRollback": "PASS_CONFIG_ROLLBACK_GUI_COMPLETION_AND_NO_FEISHU_CARD",
+    "captureWindowEndsAt": "2026-09-20T12:17:19.730Z",
+    "fullGatePassed": false,
+    "previousCaptureReview": {
+      "plan": ".artifacts/m6/gui-capture-r01",
+      "report": ".artifacts/m6/gui-capture-r01/gui-task-review.json",
+      "threadId": "01a0bea7-ec2f-7b51-b234-caccef1d9864",
+      "turnId": "01a0bea7-f1dc-7ef2-8f89-e2b35b1755dd",
+      "userConfirmed": true,
+      "notifyObserved": false,
+      "probeIssue": "markdown-escaped-underscores",
+      "configRestoredExactly": true,
+      "countsAsG3Pass": false
+    },
+    "completionReport": ".artifacts/m6/gui-capture-r02/capture-acceptance.json",
+    "originalNotifierInvocation": "PASS_ORIGINAL_COMMAND_EXIT_ZERO",
+    "liveProbe": {
+      "sessionId": 38491,
+      "marker": "M6NOTIFY34B09750",
+      "report": ".artifacts/m6/gui-capture-r02/live-34b09750-254d-4835-889b-548fe981411b/report.json",
+      "scope": "isolated-loopback-and-database",
+      "changesM5Deployment": false,
+      "status": "COMPLETED",
+      "finishedAt": "2026-09-20T12:08:33.885Z",
+      "userVisibleReceipt": "CONFIRMED",
+      "testSettingsRestored": true
+    },
+    "deliveryAcceptanceReport": ".artifacts/m6/gui-capture-r02/completion-acceptance.json",
+    "duplicateReplay": "PASS_LOCAL_REPLAY_OF_VERIFIED_GUI_EVENT",
+    "duplicateReplayReport": ".artifacts/m6/gui-capture-r02/duplicate-replay/report.json",
+    "rollbackTestMarker": "M6ROLLBACKOK",
+    "captureClosedAt": "2026-09-20T12:12:10.448Z",
+    "rollbackReport": ".artifacts/m6/gui-capture-r02/rollback-acceptance.json",
+    "rollbackGuiRegression": "PASS_FRESH_GUI_COMPLETION",
+    "rollbackFeishuObservation": "PASS_USER_CONFIRMED_NO_MARKER_CARD",
+    "remaining": [
+      "original-notifier-functional-regression",
+      "real-offline-recovery",
+      "interrupt-and-failure-observation"
+    ]
+  },
+  "deployment": {
+    "forwardingEnabled": false,
+    "candidateBuild": ".artifacts/m6/build",
+    "activeM5BuildUnchanged": true,
+    "activeM5ConfigUnchanged": true,
+    "activeDatabaseNotMigrated": true,
+    "M5T12ObservationRetained": true,
+    "baselineReport": ".artifacts/m6/development-baseline-1789904024057.json",
+    "activeServicesSamePids": true,
+    "finalReadonlyDatabaseHealth": {
+      "status": "ok",
+      "schemaVersion": 3,
+      "locks": 0,
+      "failedEvents": 0,
+      "outboxErrors": []
+    },
+    "testForwardingEnabled": false,
+    "temporaryGlobalNotifyInstalled": false,
+    "lastIsolationVerificationAt": "2026-09-20T12:19:38.509Z"
+  }
+}

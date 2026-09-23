@@ -1,0 +1,185 @@
+{
+  "gate": "G1",
+  "date": "2026-09-17",
+  "status": "PARTIAL",
+  "scope": "Single-user Feishu test chat; no Codex execution",
+  "automated": {
+    "command": "pnpm verify",
+    "files": 7,
+    "tests": 50,
+    "g1Tests": 15,
+    "result": "PASS",
+    "network": false
+  },
+  "live": {
+    "runId": "d7988024-5992-4169-9e04-58bcb65cc43d",
+    "startedAt": "2026-09-17T03:20:15.047Z",
+    "sdk": "1.74.0",
+    "sdkSha256": "82fa132c42afc1654e51284bd8ab81b64b68d66be02dbeb8fff879ae16c1cd98",
+    "mode": "live",
+    "status": "PARTIAL",
+    "checks": {
+      "connection": "PASS",
+      "inboundIdentityAndPersistence": "PASS",
+      "sendText": "PASS",
+      "sendCardV2": "PASS",
+      "cardCallbackAndResponse": "PASS",
+      "nonceDeduplication": "PASS",
+      "expiredButton": "PASS",
+      "storageFailureAck500AndRecovery": "PASS",
+      "reconnectAndReceive": "PASS",
+      "updateSameCard": "PASS",
+      "platformRedeliverySameEvent": "NOT_OBSERVED"
+    },
+    "samples": [
+      {
+        "event_type": "im.message.receive_v1",
+        "event_id_hash": "e329173d72e57bec86b0a207b37bc33a6ce17eb4ec2b251bdf9bf5f0cef0b9a6",
+        "app_matches": true,
+        "tenant_matches": true,
+        "actor_matches": true,
+        "chat_matches": true,
+        "shape": {
+          "sender": true,
+          "operator": false,
+          "context": false,
+          "token_present": true
+        },
+        "commandKind": "message"
+      },
+      {
+        "event_type": "card.action.trigger",
+        "event_id_hash": "826f48123ed2fd00f29c9916fe24bd505f71856bb6b1349c91481d6a3b284a5a",
+        "app_matches": true,
+        "tenant_matches": true,
+        "actor_matches": true,
+        "chat_matches": true,
+        "shape": {
+          "sender": false,
+          "operator": true,
+          "context": true,
+          "token_present": true
+        },
+        "commandKind": "confirm"
+      },
+      {
+        "event_type": "card.action.trigger",
+        "event_id_hash": "49545e5397ee8887b6bbb1e1d855828abe7af4278a104d72843e484f42d9fe02",
+        "app_matches": true,
+        "tenant_matches": true,
+        "actor_matches": true,
+        "chat_matches": true,
+        "shape": {
+          "sender": false,
+          "operator": true,
+          "context": true,
+          "token_present": true
+        }
+      },
+      {
+        "event_type": "card.action.trigger",
+        "event_id_hash": "fbf5d5c1e85ebfca93135336405b7a8d92a0524aa262dcd20516ab7a638e42bf",
+        "app_matches": true,
+        "tenant_matches": true,
+        "actor_matches": true,
+        "chat_matches": true,
+        "shape": {
+          "sender": false,
+          "operator": true,
+          "context": true,
+          "token_present": true
+        },
+        "commandKind": "storage-failure"
+      },
+      {
+        "event_type": "card.action.trigger",
+        "event_id_hash": "b6af3461105639c0587b911762d97a56bb32fda8fde5dc7443935b4e32625ca8",
+        "app_matches": true,
+        "tenant_matches": true,
+        "actor_matches": true,
+        "chat_matches": true,
+        "shape": {
+          "sender": false,
+          "operator": true,
+          "context": true,
+          "token_present": true
+        },
+        "commandKind": "confirm"
+      },
+      {
+        "event_type": "im.message.receive_v1",
+        "event_id_hash": "dd307e53e15739b0d3f0a6da7f21e8e7f522065365bdb21fc6c4790ecd595e42",
+        "app_matches": true,
+        "tenant_matches": true,
+        "actor_matches": true,
+        "chat_matches": true,
+        "shape": {
+          "sender": true,
+          "operator": false,
+          "context": false,
+          "token_present": true
+        },
+        "commandKind": "reconnect-message"
+      }
+    ],
+    "limitations": [
+      "SDK ACK observation is a send attempt, not proof of remote receipt.",
+      "Forced disconnect affects only the owned test socket; this is not an OS network outage.",
+      "Unauthorized identities and tampered callbacks are tested locally, not with another real account.",
+      "This probe has no Codex/task execution; its isolated database is not the M2 production inbox."
+    ],
+    "ack": {
+      "count": 7,
+      "successfulDurableCount": 6,
+      "p95Ms": 5.409,
+      "boundary": "sdk-send-attempt"
+    },
+    "counts": {
+      "inbox": 6,
+      "commands": 4
+    },
+    "finishedAt": "2026-09-17T03:26:40.297Z",
+    "cleanup": {
+      "ownedConnectionClosed": true,
+      "databaseClosed": true
+    }
+  },
+  "messageRetry": {
+    "runId": "b86ae4b7-c6bc-4eaf-9546-e6892f9a58b5",
+    "startedAt": "2026-09-17T03:28:07.464Z",
+    "sdk": "1.74.0",
+    "sdkSha256": "82fa132c42afc1654e51284bd8ab81b64b68d66be02dbeb8fff879ae16c1cd98",
+    "mode": "retry-message",
+    "status": "BLOCKED",
+    "checks": {
+      "connection": "PASS"
+    },
+    "samples": [],
+    "limitations": [
+      "SDK ACK observation is a send attempt, not proof of remote receipt.",
+      "Forced disconnect affects only the owned test socket; this is not an OS network outage.",
+      "Unauthorized identities and tampered callbacks are tested locally, not with another real account.",
+      "This probe has no Codex/task execution; its isolated database is not the M2 production inbox."
+    ],
+    "reason": "Timed out: first message write failure",
+    "ack": {
+      "count": 0,
+      "successfulDurableCount": 0,
+      "p95Ms": null,
+      "boundary": "sdk-send-attempt"
+    },
+    "counts": {
+      "inbox": 0,
+      "commands": 0
+    },
+    "finishedAt": "2026-09-17T03:38:07.579Z",
+    "cleanup": {
+      "ownedConnectionClosed": true,
+      "databaseClosed": true
+    }
+  },
+  "remaining": [
+    "Platform automatic redelivery of the same message event after failed persistence: test message not received in this run.",
+    "Other-account authorization tests and prolonged outage/crash testing remain outside this gate run."
+  ]
+}

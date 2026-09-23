@@ -1,0 +1,58 @@
+{
+  "name": "codex-feishu-gateway",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal macOS Codex gateway for Feishu",
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=24.15.0 <25",
+    "pnpm": "11.20.0"
+  },
+  "scripts": {
+    "dev": "node --import tsx src/index.ts",
+    "start": "node dist/index.js",
+    "doctor": "node --import tsx src/index.ts doctor",
+    "config:check": "node --import tsx src/index.ts config-check",
+    "check:sqlite": "node --import tsx scripts/check-sqlite.mjs",
+    "gate:rpc": "node --import tsx scripts/gates/rpc.mjs",
+    "gate:feishu": "node --import tsx scripts/gates/feishu.mjs",
+    "gate:tasks": "pnpm build && node --import tsx scripts/gates/tasks.mjs",
+    "gate:gateway": "pnpm build && node --import tsx scripts/gates/gateway.mjs",
+    "gate:interactions": "pnpm build && node --import tsx scripts/gates/interactions.mjs",
+    "gate:ownership": "node --import tsx scripts/gates/ownership.mjs",
+    "gate:services": "node --import tsx scripts/gates/services.mjs",
+    "gate:notify": "node --import tsx scripts/gates/notify.mjs",
+    "gate:notify:live": "node --import tsx scripts/gates/notify-live.mjs",
+    "service:trial": "node --import tsx scripts/gates/service-trial.mjs",
+    "protocol:generate": "node scripts/generate-protocol.mjs",
+    "protocol:check": "node scripts/generate-protocol.mjs --check",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "node scripts/build.mjs",
+    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm build"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "1.74.0",
+    "better-sqlite3": "13.0.3",
+    "pino": "10.3.1",
+    "ws": "8.21.3",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/better-sqlite3": "9.6.0",
+    "@types/node": "24.13.4",
+    "@types/ws": "8.18.1",
+    "eslint": "10.10.0",
+    "prettier": "3.9.6",
+    "tsx": "4.23.13",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.70.0",
+    "vitest": "5.0.1"
+  }
+}

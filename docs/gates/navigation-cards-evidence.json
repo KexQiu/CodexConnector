@@ -1,0 +1,170 @@
+{
+  "feature": "project-help-feedback-and-task-list-cards",
+  "recordedAt": "2026-09-23T09:06:11.301Z",
+  "status": "DEPLOYED_HUMAN_UI_CHECK_PENDING",
+  "validation": {
+    "files": 23,
+    "tests": 306,
+    "addedTests": 8,
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "format": "PASS",
+    "isolatedCandidateBuild": "PASS"
+  },
+  "behavior": {
+    "projectsPerPage": 6,
+    "tasksPerPage": 4,
+    "projectActionsBesideRows": true,
+    "readOnlyAndMissingProjectsHaveNoExecuteButton": true,
+    "draftExecutionExplicitlyLabeled": true,
+    "helpSections": 4,
+    "newCommand": "/任务 [页码]",
+    "selectedStatusCommandPreserved": true,
+    "taskListAndDetailsDoNotChangeSelection": true,
+    "paginationDoesNotExecuteTasks": true,
+    "allButtonsBordered": true,
+    "clipboard": "ID_DISPLAY_ONLY",
+    "newDependencies": 0,
+    "eventsDeduplicated": true,
+    "projectSelectionAndDraftCancellationRemainOneShot": true,
+    "frozenWireRetained": true
+  },
+  "realPlatform": {
+    "at": "2026-09-23T09:03:48.392Z",
+    "status": "PASS_REAL_FEISHU_NAVIGATION_COMPONENTS",
+    "syntheticDataOnly": true,
+    "productionDbRead": false,
+    "realModelTasksCreated": 0,
+    "existingPreviewUpdated": true,
+    "newMessages": 0,
+    "accepted": [
+      {
+        "kind": "project-list",
+        "bytes": 1436,
+        "apiAccepted": true,
+        "receiptInPreview": true
+      },
+      {
+        "kind": "draft-project",
+        "bytes": 1926,
+        "apiAccepted": true,
+        "receiptInPreview": true
+      },
+      {
+        "kind": "task-list-first",
+        "bytes": 5197,
+        "apiAccepted": true,
+        "receiptInPreview": true
+      },
+      {
+        "kind": "task-list-last",
+        "bytes": 2065,
+        "apiAccepted": true,
+        "receiptInPreview": true
+      },
+      {
+        "kind": "feedback",
+        "bytes": 598,
+        "apiAccepted": true,
+        "receiptInPreview": true
+      },
+      {
+        "kind": "help",
+        "bytes": 2528,
+        "apiAccepted": true,
+        "receiptInPreview": true
+      }
+    ],
+    "humanVisualCheck": "PENDING_USER"
+  },
+  "migration": {
+    "rehearsal": {
+      "at": "2026-09-23T09:03:33.807Z",
+      "fromSchema": 8,
+      "schema": 9,
+      "privateCopyOnly": true,
+      "allBusinessRowsUnchanged": true,
+      "businessTables": 20,
+      "integrity": "ok"
+    },
+    "production": {
+      "at": "2026-09-23T09:04:29.902Z",
+      "schema": 9,
+      "fromSchema": 8,
+      "migrated": true,
+      "allBusinessRowsUnchanged": true,
+      "businessTables": 20,
+      "integrity": "ok"
+    }
+  },
+  "deployment": {
+    "at": "2026-09-23T09:05:08.295Z",
+    "status": "PASS_REAL_DEPLOYMENT_AND_CANONICAL_RETAINED",
+    "schemaVersion": 9,
+    "ready": true,
+    "feishuConnected": true,
+    "samePanel": true,
+    "sameMessage": true,
+    "operation": "update",
+    "version": 305,
+    "taskCount": 15,
+    "selectionUnchanged": true,
+    "outboxIssues": 0,
+    "structuredLayoutVersion": 1,
+    "nativeColumns": true,
+    "allButtonsBordered": true,
+    "sessionPickerEntry": true,
+    "noCopyCallbackButton": true,
+    "receiptInRemotePreview": true,
+    "remoteGetScope": "IM_GET_PREVIEW_NOT_HUMAN_UI",
+    "quotaAbsentFromPanel": true,
+    "buildHash": "f5ce31e3dea9fbd0c4f1e52daedb451fffe4c894e45a20b289fc3f3ca7fc0c7a",
+    "previousBuildHash": "b62e23c4a034bf47ec604af1e221951ff5028318d4be709af587773de408e3d0",
+    "configUnchanged": true,
+    "privateEvidenceRoot": ".artifacts/deployments/navigation-cards-20260923-r01",
+    "previousBuildAndBackupsRetained": true,
+    "manualV9Backup": "PASS_INTEGRITY_OK_REDACTED_TASKS_0"
+  },
+  "humanUi": {
+    "status": "PENDING_USER",
+    "steps": ["/项目", "/帮助", "/任务", "下一页 → 查看详情"],
+    "noNewTaskRequired": true
+  },
+  "previousTrial": {
+    "startedAt": "2026-09-23T08:44:19.346Z",
+    "elapsedHours": 0.329,
+    "status": "ENDED_EARLY_FOR_AUTHORIZED_NAVIGATION_UPGRADE",
+    "countsAsPassed": false,
+    "report": ".artifacts/deployments/navigation-cards-20260923-r01/trial-before.json"
+  },
+  "currentTrial": {
+    "status": "OBSERVING",
+    "startedAt": "2026-09-23T09:05:22.714Z",
+    "earliestReviewAt": "2026-09-24T09:05:22.714Z",
+    "skippedManualEvidence": [
+      {
+        "case": "user-login-autostart",
+        "status": "SKIPPED_BY_USER",
+        "recordedAt": "2026-09-20T09:31:53.793Z",
+        "countsAsPassed": false
+      }
+    ],
+    "automaticAcceptance": false,
+    "report": ".artifacts/deployments/navigation-cards-20260923-r01/trial-new.json"
+  },
+  "remainingScope": [
+    "terminal-fallback-card",
+    "desktop-notify-card",
+    "approval-body-detail-layout"
+  ],
+  "sourceSHA256": {
+    "src/feishu/navigation-cards.ts": "7834b78419a1225079bd22c44dfeab569ff5f740e2f2500ba4e9c699f5dd37dc",
+    "src/feishu/commands.ts": "a3b2a51d48fd8c1758655c4f133cbb9691b1934fb03841c69d29d193ec7fc321",
+    "src/feishu/conversation-ui.ts": "9d5f3d1414ad0959ca87524ea4bb4f1d863868e266af559243fd63f54b80289e",
+    "src/feishu/inbound.ts": "a997d1914af0c78749aaf7206e18733ae501fe35ce53dfd46aa4c5c039895220",
+    "src/persistence/migrate.ts": "4672a9646fd891d9966787aeb5c5e91a03e5e3cddf07c25f62d166f25a36ef6e",
+    "src/persistence/migrations/009_navigation_cards.sql": "c840e58a5806a94f9cd977cdcc47e33733f335a2dc940e2e14e754ba2bf173f3",
+    "tests/navigation-cards.test.mjs": "22c5a4417d181992321cb3bf4474c2c2535b322d0fc72771a2204ec852e66b97",
+    "tests/session-navigation.test.mjs": "4cbadd25c3a21690b9d103d7bf896ef0e230a756e0b726da2efa254f9bb90aac"
+  }
+}

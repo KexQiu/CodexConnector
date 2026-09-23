@@ -1,0 +1,10 @@
+packages:
+  - .
+minimumReleaseAgeExclude:
+  - '@vitest/mocker@5.0.1'
+  - '@vitest/spy@5.0.1'
+  - vitest@5.0.1
+strictPeerDependencies: true
+storeDir: .pnpm-store
+ignoreScripts: true
+verifyDepsBeforeRun: error

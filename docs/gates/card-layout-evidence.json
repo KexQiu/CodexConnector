@@ -1,0 +1,142 @@
+{
+  "feature": "native-feishu-card-hierarchy",
+  "recordedAt": "2026-09-23T08:05:47.984Z",
+  "status": "DEPLOYED_API_AND_RECEIPT_VERIFIED_HUMAN_VISUAL_CHECK_PENDING",
+  "validation": {
+    "testFiles": 21,
+    "tests": 285,
+    "addedTests": 8,
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "format": "PASS",
+    "isolatedCandidateBuild": "PASS",
+    "scope": "REAL_SQLITE_AND_LOCAL_RPC_FIXTURES_WITH_SIMULATED_SERVERS"
+  },
+  "behavior": {
+    "session": "SUMMARY_WITH_PAIRED_FIELDS",
+    "details": "DETAILED_METRICS_AND_IDENTIFIERS",
+    "quota": "INDEPENDENT_COMMAND_PERCENT_BAR_AND_RESET",
+    "approval": "FULL_SCOPE_ADJACENT_EQUAL_WEIGHT_DECISIONS",
+    "onePrimaryButton": true,
+    "columnsPerRow": 2,
+    "titleReceiptRetained": true,
+    "frozenWireContentRetained": true,
+    "legacyPayloadCompatible": true,
+    "noExactContextPercent": true,
+    "noNewDependencies": true
+  },
+  "realPlatform": {
+    "at": "2026-09-23T08:01:06.034Z",
+    "status": "PASS_REAL_FEISHU_JSON2_CREATE_PATCH_AND_LOST_REPLY_RECOVERY",
+    "syntheticDataOnly": true,
+    "oneMessageOnly": true,
+    "creates": 1,
+    "accepted": [
+      {
+        "kind": "quota",
+        "bytes": 922,
+        "createOrUpdateAccepted": true,
+        "receiptInPreview": true
+      },
+      {
+        "kind": "details",
+        "bytes": 2460,
+        "createOrUpdateAccepted": true,
+        "receiptInPreview": true
+      },
+      {
+        "kind": "approval",
+        "bytes": 1297,
+        "createOrUpdateAccepted": true,
+        "receiptInPreview": true
+      },
+      {
+        "kind": "summary",
+        "bytes": 2501,
+        "createOrUpdateAccepted": true,
+        "receiptInPreview": true
+      }
+    ],
+    "lostCreateReplyReconciled": true,
+    "secondWebsocket": false,
+    "productionDbRead": false,
+    "modelTasksCreated": 0,
+    "selectionChanged": false,
+    "humanVisualCheck": "PENDING"
+  },
+  "deployment": {
+    "at": "2026-09-23T08:03:13.393Z",
+    "status": "PASS_REAL_DEPLOYMENT_AND_CANONICAL_UPDATE",
+    "schemaVersion": 7,
+    "ready": true,
+    "feishuConnected": true,
+    "samePanel": true,
+    "sameMessage": true,
+    "operation": "update",
+    "version": 240,
+    "taskCount": 15,
+    "selectionUnchanged": true,
+    "outboxIssues": 0,
+    "structuredLayoutVersion": 1,
+    "nativeColumns": true,
+    "receiptInRemotePreview": true,
+    "remoteGetScope": "IM_GET_PREVIEW_NOT_HUMAN_UI",
+    "quotaAbsentFromPanel": true,
+    "buildHash": "13f4744fbc2a4ab2f2ddc126e9b8fb161746c1ef5a3babb27afb568f0c7125fd",
+    "previousBuildHash": "19066d3f2c4d375792f4fc443827a19f6132e05db493c6879a78a8cea98509fe",
+    "configUnchanged": true,
+    "notifyEnabled": false,
+    "dataCheck": {
+      "at": "2026-09-23T08:02:20.044Z",
+      "schema": 7,
+      "noMigration": true,
+      "allBusinessRowsUnchanged": true,
+      "businessTables": 20,
+      "integrity": "ok"
+    },
+    "privateEvidenceRoot": ".artifacts/deployments/card-layout-20260923-r01"
+  },
+  "humanUi": {
+    "status": "PENDING_USER",
+    "commands": ["/当前", "/额度", "/状态 76356b42"],
+    "scope": "API_ACCEPTANCE_AND_IM_GET_PREVIEW_DO_NOT_PROVE_PHONE_LAYOUT"
+  },
+  "previousTrial": {
+    "startedAt": "2026-09-23T07:29:44.674Z",
+    "elapsedHours": 0.534,
+    "status": "ENDED_EARLY_FOR_AUTHORIZED_CARD_LAYOUT_DEPLOYMENT",
+    "countsAsPassed": false,
+    "report": ".artifacts/deployments/card-layout-20260923-r01/trial-before.json"
+  },
+  "currentTrial": {
+    "status": "OBSERVING",
+    "startedAt": "2026-09-23T08:03:49.956Z",
+    "earliestReviewAt": "2026-09-24T08:03:49.956Z",
+    "skippedManualEvidence": [
+      {
+        "case": "user-login-autostart",
+        "status": "SKIPPED_BY_USER",
+        "recordedAt": "2026-09-20T09:31:53.793Z",
+        "countsAsPassed": false
+      }
+    ],
+    "automaticAcceptance": false,
+    "report": ".artifacts/deployments/card-layout-20260923-r01/trial-new.json"
+  },
+  "sourceSHA256": {
+    "src/feishu/card-layout.ts": "7101891c4e7ee57ae43ae71fea937ee9753e1b5d6bd348c8c2a5bb4495a64acf",
+    "src/feishu/metrics-layout.ts": "d84e6bc5aaf2f953be3eeda29dbe5253fbec3aa23c886de2e1ba63ef16051c04",
+    "src/feishu/task-layout.ts": "39fe7d2d118a3951cdcf18d0576e9fa025f233e22bb1001b7c7d8ad8359baaa3",
+    "src/feishu/conversation-ui.ts": "91e7ac9079a8797be8465a4a00f7d02d756830cc8aa66d2560668cc1e3a89178",
+    "src/feishu/context-panel.ts": "9eb69d4539240ea138cf2e4fd84a8e1dfeabb79160e66758c6515b24e7e237f2",
+    "src/feishu/commands.ts": "e7f2d7193645a7efc8b3534be49d2021093b141e2def5d0082ed219b52a66057",
+    "src/feishu/sender.ts": "78a74b450572b5107ebff5d1612884a04d7d82a5b52fdb2ced1959be146e9e51",
+    "tests/card-layout.test.mjs": "5739b107833a88e3d3146ff78ccee935cca45a76dbd2a54a69f5f121802e5928",
+    "tests/feishu-gateway.test.mjs": "f532640271a1a062ff6cb5aa25dfaf241e5226640164f66623f2c333b0a61939"
+  },
+  "supersededBy": {
+    "evidence": "docs/gates/session-navigation-evidence.json",
+    "schemaVersion": 8,
+    "at": "2026-09-23T08:30:38.854Z"
+  }
+}

@@ -1,0 +1,138 @@
+{
+  "feature": "session-and-account-status-metrics",
+  "recordedAt": "2026-09-23T04:13:27.715Z",
+  "status": "DEPLOYED_REAL_ACCOUNT_QUOTA_CARD_UPDATE_RESTART_VERIFIED_UI_AND_TOKEN_EVENTS_PENDING",
+  "validation": {
+    "testFiles": 19,
+    "tests": 261,
+    "addedTests": 16,
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "format": "PASS",
+    "database": "REAL_SQLITE",
+    "fixtures": "LOCAL_RPC_SIMULATION",
+    "sandboxAttempt": "SOCKET_FIXTURES_COULD_NOT_START_ABORTED_THEN_261_PASS_WITH_LOCAL_LISTEN_PERMISSION"
+  },
+  "migration": {
+    "from": 5,
+    "to": 6,
+    "privateCopy": "PASS",
+    "production": "PASS_PRODUCTION_V5_TO_V6",
+    "originalBusinessTables": 17,
+    "allOriginalRowsUnchanged": true,
+    "integrity": "ok",
+    "foreignKeys": 0,
+    "report": ".artifacts/deployments/status-metrics-20260923-r01/migration-acceptance.json"
+  },
+  "deployment": {
+    "buildHash": "9ef713919fbe579dac781bec184efba423feb11e7bc38a62f1dfb061cc320d12",
+    "previousBuildHash": "4f3bf28f9b6dc53228c4c7e42ac997413971e4528946594c598bd72e81f17554",
+    "configUnchanged": true,
+    "notifyEnabled": false,
+    "modelTasksCreated": 0,
+    "liveCapture": {
+      "at": "2026-09-23T04:11:08.233Z",
+      "status": "PASS_LIVE_ACCOUNT_CAPTURE_AND_CANONICAL_DELIVERY",
+      "schemaVersion": 6,
+      "ready": true,
+      "feishuConnected": true,
+      "samePanel": true,
+      "sameMessage": true,
+      "operation": "update",
+      "version": 4,
+      "attempts": 1,
+      "limits": {
+        "codex": {
+          "primary": {
+            "usedPercent": 64,
+            "windowDurationMins": 10080,
+            "resetsAt": 1790480915
+          },
+          "secondary": null
+        }
+      },
+      "payloadContainsQuota": true,
+      "taskCount": 15,
+      "sessionMetricsCount": 0,
+      "pendingOutbox": 0
+    },
+    "feishuReceipt": {
+      "at": "2026-09-23T04:11:33.635Z",
+      "status": "PASS_REAL_FEISHU_PATCH_AND_GET",
+      "sameChat": true,
+      "receiptMatched": true,
+      "payloadContainsQuota": true,
+      "operation": "update",
+      "version": 4,
+      "bodyScope": "IM_GET_PREVIEW_ONLY_UI_PENDING"
+    },
+    "restart": {
+      "at": "2026-09-23T04:12:02.732Z",
+      "status": "PASS_REAL_RESTART_CACHE_REFRESH_AND_SAME_CARD",
+      "sameMessage": true,
+      "canonicalSendCount": 1,
+      "quotaStatus": "ok",
+      "quotaObservedAt": 1790136712124,
+      "refreshedAfterRestart": true,
+      "taskCount": 15,
+      "schema": 6
+    },
+    "manualBackup": "PASS_NOT_AUTOMATIC_COVERAGE",
+    "privateEvidenceRoot": ".artifacts/deployments/status-metrics-20260923-r01"
+  },
+  "realReadOnlySessionMetadata": {
+    "status": "PASS_EXISTING_OWNED_THREAD_READ_INCLUDE_TURNS_FALSE",
+    "model": "gpt-6-astra",
+    "reasoningEffort": "xhigh",
+    "noResume": true,
+    "noModelExecution": true,
+    "selectedContextChanged": false
+  },
+  "currentSelectedContext": "NEW_TOPIC_NO_THREAD_MODEL_PENDING",
+  "scope": {
+    "quota": "GATEWAY_APP_SERVER_CURRENT_ACCOUNT_SHARED_WINDOWS",
+    "context": "LAST_REPORTED_INPUT_AND_MODEL_WINDOW_NOT_EXACT_CONTEXT_PERCENT",
+    "tokenEvents": "SIMULATED_NOT_LIVE_THIS_TURN",
+    "compaction": "SIMULATED_NOT_LIVE_THIS_TURN",
+    "accountSwitch": "SIMULATED_NOT_LIVE_THIS_TURN",
+    "humanUi": "PENDING"
+  },
+  "previousTrial": {
+    "startedAt": "2026-09-23T03:50:53.573Z",
+    "elapsedHours": 0.316,
+    "status": "ENDED_EARLY_FOR_AUTHORIZED_STATUS_METRICS_DEPLOYMENT",
+    "countsAsPassed": false,
+    "report": ".artifacts/deployments/status-metrics-20260923-r01/trial-before.json"
+  },
+  "currentTrial": {
+    "status": "OBSERVING",
+    "startedAt": "2026-09-23T04:12:03.131Z",
+    "earliestReviewAt": "2026-09-24T04:12:03.131Z",
+    "skippedManualEvidence": [
+      {
+        "case": "user-login-autostart",
+        "status": "SKIPPED_BY_USER",
+        "recordedAt": "2026-09-20T09:31:53.793Z",
+        "countsAsPassed": false
+      }
+    ],
+    "automaticAcceptance": false,
+    "report": ".artifacts/deployments/status-metrics-20260923-r01/trial-new.json"
+  },
+  "sourceSHA256": {
+    "src/tasks/status-metrics.ts": "1d140eeaed7b0884093eb454f372236ea52b3fd4215f5d58b1c6333ae49f8eec",
+    "src/tasks/worker.ts": "bed9854423966546dd14e0d806bce154e9e31d2ce5457df0d36282a9f067bdaf",
+    "src/feishu/context-panel.ts": "535360b49511fffbf2bed4149a75065d2c0f1268127c97b786577af8633ab378",
+    "src/feishu/runtime.ts": "186dd752eb4cd0f2c72bde9ad9ee0bdf65924fbd58c3f264747a0c2a2af23ae3",
+    "src/feishu/commands.ts": "1b736ee28f10a45e09c31e09173d47c5156fbd8488ccf85111a6c720992def4a",
+    "src/codex/schemas.ts": "0d92ecb8941a703a560dce667dcc3c201345ba588ff6717a4952df5e31d5ac2c",
+    "src/persistence/migrate.ts": "56b48676b8e2b112ccc33a016de1aa2a4a14a5f20573673d630dab4f27ad3b5e",
+    "src/persistence/migrations/006_status_metrics.sql": "d96af98f6145e80e79cb72468163f8986aea7d6090dc74ec7098c6aa3be0e50b",
+    "tests/status-metrics.test.mjs": "9210458393058f831755ed44f0d594da705a5f89f13ec72eda9a1b7be5e0b827"
+  },
+  "supersededBy": {
+    "schemaVersion": 7,
+    "evidence": "docs/gates/session-display-evidence.json",
+    "at": "2026-09-23T07:31:19.831Z"
+  }
+}

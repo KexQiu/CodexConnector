@@ -1,0 +1,24 @@
+{
+  "runDate": "2026-09-15",
+  "command": "pnpm check:sqlite",
+  "status": "PASS",
+  "node": "24.15.0",
+  "platform": "darwin",
+  "architecture": "arm64",
+  "sqlite": "3.53.4",
+  "pragmas": {
+    "journalMode": "wal",
+    "synchronous": 2,
+    "foreignKeys": 1,
+    "busyTimeoutMs": 250
+  },
+  "rollback": true,
+  "readonlyRejected": true,
+  "backupIntegrity": "ok",
+  "privateMode": "0600",
+  "sampleCount": 30,
+  "commitP95Ms": 0.08,
+  "busyWaitMs": 308.78,
+  "eventLoopDelayMs": 309.45,
+  "scope": "temporary-local-fixtures; not a Feishu ACK or production load test"
+}

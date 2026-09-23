@@ -1,0 +1,160 @@
+{
+  "feature": "current-project-and-conversation-panel",
+  "recordedAt": "2026-09-23T03:52:26.298Z",
+  "status": "DEPLOYED_CARD_DELIVERY_UPDATE_RESTART_VERIFIED_MENU_AND_UI_PENDING",
+  "scope": [
+    "dedicated-single-chat",
+    "durable-current-context-projection",
+    "on-demand-snapshot",
+    "whitelisted-bot-menu-events"
+  ],
+  "nativePinOrTopNotice": false,
+  "validation": {
+    "typecheck": "PASS",
+    "lint": "PASS",
+    "format": "PASS",
+    "testFiles": 18,
+    "tests": 245,
+    "newPanelTests": 19,
+    "database": "REAL_SQLITE",
+    "menuDispatcher": "INSTALLED_SDK_FRAME_AND_ACK_TESTED_LOCALLY",
+    "feishuFailures": "SIMULATED",
+    "rotationAndExpiry": "SIMULATED_CLOCK",
+    "modelExecution": "NO_NEW_MODEL_TASK"
+  },
+  "migration": {
+    "from": 4,
+    "to": 5,
+    "privateCopy": "PASS",
+    "production": "PASS_PRODUCTION_MIGRATION",
+    "originalBusinessTables": 16,
+    "allOriginalRowsUnchanged": true,
+    "integrity": "ok",
+    "foreignKeyViolations": 0,
+    "report": ".artifacts/deployments/context-panel-20260923-r01/migration-acceptance.json"
+  },
+  "deployment": {
+    "buildHash": "4f3bf28f9b6dc53228c4c7e42ac997413971e4528946594c598bd72e81f17554",
+    "previousBuildHash": "87a90aae88bacaadc15b485d0cbcf58c0470b6d87e2c3733eb259616ed9068ba",
+    "configUnchanged": true,
+    "schemaVersion": 5,
+    "servicesReady": true,
+    "feishuConnected": true,
+    "notifyEnabled": false,
+    "modelTasksCreated": 0,
+    "panelCreated": {
+      "recordedAt": "2026-09-23T03:49:48.641Z",
+      "status": "PASS_REAL_FEISHU_RECEIPT",
+      "operation": "send",
+      "attempts": 1,
+      "version": 1,
+      "sameMessage": true,
+      "correctChat": true,
+      "receiptMarkerMatched": true,
+      "titleMatched": true,
+      "taskCount": 15,
+      "panelCount": 1,
+      "uiAcceptance": "PENDING",
+      "bodyContentScope": "IM_GET_PREVIEW_ONLY"
+    },
+    "panelUpdated": {
+      "recordedAt": "2026-09-23T03:50:15.399Z",
+      "status": "PASS_REAL_FEISHU_PATCH_AND_GET",
+      "trigger": "ContextPanel.request_LOCAL_NOT_USER_CALLBACK",
+      "operation": "update",
+      "attempts": 1,
+      "version": 2,
+      "sameMessage": true,
+      "receiptMarkerMatched": true,
+      "canonicalSendCount": 1,
+      "taskCount": 15
+    },
+    "panelRestarted": {
+      "recordedAt": "2026-09-23T03:50:52.993Z",
+      "status": "PASS_REAL_SERVICE_RESTART_NO_DUPLICATE",
+      "samePanel": true,
+      "sameMessage": true,
+      "version": 2,
+      "panelCount": 1,
+      "canonicalSendCount": 1,
+      "taskCount": 15,
+      "pendingOutbox": 0
+    },
+    "manualBackup": {
+      "status": "PASS_NOT_AUTOMATIC_BACKUP_COVERAGE",
+      "report": ".artifacts/deployments/context-panel-20260923-r01/maintenance-after.json"
+    },
+    "privateArtifactDirectory": ".artifacts/deployments/context-panel-20260923-r01"
+  },
+  "menu": {
+    "code": "IMPLEMENTED",
+    "platformConfiguration": "PENDING_APP_ADMIN_ACCOUNT_ACCESS",
+    "observedBlocker": "CURRENT_BROWSER_ACCOUNT_CANNOT_ACCESS_CONFIGURED_APP",
+    "unrelatedApplicationsChanged": false,
+    "eventType": "application.bot.menu_v6",
+    "keys": ["codex_current_context", "codex_switch_project", "codex_new_topic"],
+    "userClickAcceptance": "PENDING"
+  },
+  "manualAcceptance": {
+    "P01": "PENDING_USER_MESSAGE_OR_MENU",
+    "P02": "PENDING_USER_CONTEXT_CHANGE_REAL_PATCH_ALREADY_VERIFIED",
+    "P03": "PENDING_REAL_TASK_LOAD",
+    "P04": "PENDING_USER_OLD_BUTTON",
+    "P05": "PENDING_REAL_MENU",
+    "P06": "PASS_REAL_SERVICES_RESTART"
+  },
+  "previousTrial": {
+    "status": "ARCHIVED_FOR_AUTHORIZED_PANEL_DEPLOYMENT_PENDING_MANUAL_ACCEPTANCE",
+    "elapsedHours": 48.265,
+    "unchanged": true,
+    "samples": {
+      "app-server": {
+        "count": 2888,
+        "gapsOverTwoMinutes": 1,
+        "longestGapSeconds": 304,
+        "notReadySamples": 1
+      },
+      "gateway": {
+        "count": 2888,
+        "gapsOverTwoMinutes": 1,
+        "longestGapSeconds": 296,
+        "notReadySamples": 3
+      }
+    },
+    "countsAsPassed": false,
+    "report": ".artifacts/deployments/context-panel-20260923-r01/trial-before.json"
+  },
+  "currentTrial": {
+    "status": "OBSERVING",
+    "startedAt": "2026-09-23T03:50:53.573Z",
+    "earliestReviewAt": "2026-09-24T03:50:53.573Z",
+    "automaticAcceptance": false,
+    "skippedManualEvidence": [
+      {
+        "case": "user-login-autostart",
+        "status": "SKIPPED_BY_USER",
+        "recordedAt": "2026-09-20T09:31:53.793Z",
+        "countsAsPassed": false
+      }
+    ],
+    "report": ".artifacts/deployments/context-panel-20260923-r01/trial-new.json"
+  },
+  "sourceSHA256": {
+    "src/feishu/context-panel.ts": "6d27f4c71c328db231d8ca908837315270b6e40535ff71631c37c683e4372361",
+    "src/feishu/conversation-ui.ts": "d00d918eddd25aaf72f7f0c9d71918ca263d63e9dd2a1c7ead939253ee1fc7e7",
+    "src/feishu/commands.ts": "db35892010da7b1dfea3d6ba023fbe39000ef4ab2029b7a6671ff2e16745ca9e",
+    "src/feishu/inbound.ts": "c8e98d56854a04d21c28387d2a871eb1b80ca97d32c01df75db4ecff0f883bb5",
+    "src/feishu/runtime.ts": "f6a9bf7c5e5bf294ae547e28ff1a6f27695015e7ee5d7333cb9789d7ba5d1cc5",
+    "src/feishu/sender.ts": "39bf1fafde0bf6869d0461fccf37a98a284ea6ae1cb0447ab9483120e9e7968a",
+    "src/tasks/outbox.ts": "8b55665a844b4600b537c827f8739d718e6bdd301de6081014ef7932d178dfad",
+    "src/persistence/migrate.ts": "e703eacd3c5d800e9158052d4888996e56708fb0c98fb0c21d13b73623e2f4c2",
+    "src/persistence/migrations/005_context_panel.sql": "20fe61cd6321ab9816104182595fd01878a77055be857559c2da9fc1d1a15f42",
+    "tests/context-panel.test.mjs": "5761dd1b966ddd6a9340e9c7596e3b520d68da6b011ced7ae7979ae195361074"
+  },
+  "supersededDeployment": {
+    "at": "2026-09-23T04:09:50.148Z",
+    "schemaVersion": 6,
+    "feature": "session-and-account-status-metrics",
+    "evidence": "docs/gates/status-metrics-evidence.json"
+  }
+}

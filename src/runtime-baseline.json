@@ -1,0 +1,8 @@
+{
+  "milestone": "M4",
+  "node": "24.15.0",
+  "pnpm": "11.20.0",
+  "codex": "0.155.0-alpha.9.2",
+  "codexBinary": "/Applications/ChatGPT.app/Contents/Resources/codex",
+  "protocolExperimental": true
+}
