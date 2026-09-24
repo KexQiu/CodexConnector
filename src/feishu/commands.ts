@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { GatewayConfig } from '../config/schema.js';
 import type { ProjectStore } from '../projects/store.js';
-import { canonicalDirectory, writableProject } from '../projects/store.js';
+import { canExecuteProject, projectPermissionLabel } from '../config/project-policy.js';
+import { canonicalDirectory, executableProject } from '../projects/store.js';
 import type { TaskStore } from '../tasks/store.js';
 import { TaskError, type StoredTask } from '../tasks/types.js';
 import { taskFailureDescription } from '../tasks/presentation.js';
@@ -179,8 +180,8 @@ export class FeishuCommands {
         (task
           ? '直接发送消息即可继续；正在执行时，新消息将排到下一轮。'
           : '直接发送需求即可开始。') +
-        '\n回复其他任务卡片时，以被回复的话题为准。' +
-        (this.config.projects.find((p) => p.key === projectKey)?.remoteWrite
+        `\n权限：${projectPermissionLabel(this.config.projects.find((p) => p.key === projectKey))}\n回复其他任务卡片时，以被回复的话题为准。` +
+        (canExecuteProject(this.config.projects.find((p) => p.key === projectKey))
           ? ''
           : '\n该项目目前只读，尚不能执行任务。'),
       [
@@ -261,7 +262,7 @@ export class FeishuCommands {
     parent: StoredTask | null,
     updateContext = true,
   ) {
-    const project = writableProject(this.config.projects, projectKey, parent?.cwd);
+    const project = executableProject(this.config.projects, projectKey, parent?.cwd);
     if (
       this.store
         .list(this.inbox.owner)
@@ -426,7 +427,7 @@ export class FeishuCommands {
           await this.interactive?.refreshMetrics?.(undefined, payload.projectKey ?? undefined);
           finish(() => {
             const projectKey = payload.projectKey ?? '';
-            writableProject(this.config.projects, projectKey);
+            executableProject(this.config.projects, projectKey);
             if (payload.draftId) {
               const draft = this.draft(payload.draftId);
               const task = this.submit(`draft:${payload.draftId}`, projectKey, draft.prompt, null);
@@ -720,7 +721,7 @@ export class FeishuCommands {
           'UPDATE feishu_commands SET target_task_id=?,target_project_key=? WHERE command_id=?',
         ).run(parent?.task_id ?? null, projectKey, command.command_id);
       }
-      writableProject(this.config.projects, projectKey, parent?.cwd);
+      executableProject(this.config.projects, projectKey, parent?.cwd);
       if (parent && !parent.thread_id) {
         if (
           !['queued', 'starting', 'unknown'].includes(parent.status) ||

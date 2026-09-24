@@ -20,7 +20,10 @@
       "key": "example",
       "name": "Example project",
       "root": "/absolute/path/to/checkout",
-      "remoteWrite": false
+      "remotePermissions": {
+        "mode": "disabled",
+        "networkAccess": false
+      }
     }
   ]
 }

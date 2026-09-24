@@ -1,0 +1,30 @@
+{
+  "name": "@codexconnector/desktop",
+  "productName": "CodexConnector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.cjs",
+  "description": "Codex 与飞书的本地连接控制台",
+  "author": "CodexConnector",
+  "config": {
+    "forge": "./forge.config.cjs"
+  },
+  "scripts": {
+    "build": "vite build && vite build --config vite.main.config.ts",
+    "typecheck": "tsc --noEmit",
+    "start": "electron .",
+    "make": "electron-forge make --platform darwin --arch arm64"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "7.11.2",
+    "@electron-forge/maker-dmg": "7.11.2",
+    "@electron-forge/maker-zip": "7.11.2",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "electron": "44.4.5",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "vite": "8.3.0"
+  }
+}

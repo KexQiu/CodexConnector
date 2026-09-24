@@ -5,6 +5,7 @@ import Database from 'better-sqlite3';
 import { z } from 'zod';
 import { privateDirectory, processAlive, readPrivate, servicePaths, writeJson } from './files.js';
 import { TaskError } from '../tasks/types.js';
+import { processGroupAlive } from './child.js';
 
 export const roles = ['app-server', 'gateway'] as const;
 export type ServiceRole = (typeof roles)[number];
@@ -107,7 +108,10 @@ export class ServiceLeases {
   }
   active() {
     return this.list().filter(
-      (row) => processAlive(row.pid) || (row.child_pid !== null && processAlive(row.child_pid)),
+      (row) =>
+        processAlive(row.pid) ||
+        (row.child_pid !== null &&
+          (row.child_pid < 0 ? processGroupAlive(-row.child_pid) : processAlive(row.child_pid))),
     );
   }
   acquire(role: ServiceRole | 'maintenance') {
@@ -123,9 +127,13 @@ export class ServiceLeases {
       })
       .immediate();
   }
-  child(token: string, pid: number | null) {
+  child(token: string, pid: number | null, group = false) {
+    // Negative child_pid denotes an owned detached group; legacy PID rows keep
+    // their original representation and need no live schema migration.
+    const reference = pid !== null && group ? -pid : pid;
     if (
-      this.db.prepare('UPDATE leases SET child_pid=? WHERE token=?').run(pid, token).changes !== 1
+      this.db.prepare('UPDATE leases SET child_pid=? WHERE token=?').run(reference, token)
+        .changes !== 1
     )
       throw new TaskError('服务租约已失效');
   }

@@ -5,6 +5,9 @@
 > 项目：/Users/kex/Code/MyCode/CodexConnector
 > 技术背景：[本机 Gateway 技术方案](./codex-feishu-gateway.md)
 > 立项与选型：[立项说明](./PROJECT_CHARTER.md) · [技术选型](./TECH_STACK.md)
+> 后续需求：[TODO](./TODO.md)；本机项目权限与并发任务数已实现，配置及验收见 [本机配置](./docs/LOCAL_CONFIGURATION.md)。
+
+桌面 App D1–D4 实施与验收另见 [桌面 App](./docs/DESKTOP_APP.md)：已加入桌面运行基础、配置界面、生命周期和迁移能力；真实飞书联合验收及无开发环境 Mac 安装验收须独立完成。CFG-01/02 已完成代码及自动化验证，真实飞书并行任务验收另行执行。
 
 先交付“飞书管理 Gateway 自己的任务”，再接 GUI 通知。按一个主要开发者连续投入估算，第一期需要 **9–14 个工程人日**；计入约 20% 联调缓冲，建议预留 **11–17 个工作日**。GUI 通知另计 1–2 人日。飞书应用发布、权限申请和等待用户操作的时间不计入工程估算。
 

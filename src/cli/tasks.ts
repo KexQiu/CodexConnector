@@ -4,7 +4,7 @@ import { isAbsolute, resolve } from 'node:path';
 import type { GatewayConfig } from '../config/schema.js';
 import { runtimePaths } from '../config/schema.js';
 import { CodexRpcClient } from '../codex/rpc-client.js';
-import { ProjectStore, writableProject } from '../projects/store.js';
+import { ProjectStore, executableProject } from '../projects/store.js';
 import { openGatewayDatabase, backupGatewayDatabase } from '../persistence/database.js';
 import { TaskStore, ownerKey } from '../tasks/store.js';
 import { configuredOwner, TaskWorker, taskSummary } from '../tasks/worker.js';
@@ -85,7 +85,7 @@ export async function runTaskCli(
     if (command === 'task-create') {
       if (!values.project || !values['request-key'] || !values['prompt-file'])
         throw new TaskError('需要 --project、--request-key 和 --prompt-file');
-      const project = writableProject(config.projects, values.project);
+      const project = executableProject(config.projects, values.project);
       const prompt = await readFile(resolve(values['prompt-file']), 'utf8');
       const result = store.submit({
         owner,

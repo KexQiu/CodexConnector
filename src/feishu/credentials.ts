@@ -3,14 +3,14 @@ import { z } from 'zod';
 import type { GatewayConfig } from '../config/schema.js';
 import { TaskError } from '../tasks/types.js';
 
-const schema = z.object({
+export const credentialsSchema = z.object({
   appId: z.string().regex(/^cli_[a-zA-Z0-9]+$/),
   appSecret: z.string().min(1).max(256),
   tenantKey: z.string().min(1),
   allowedOpenId: z.string().regex(/^ou_[a-zA-Z0-9]+$/),
   testChatId: z.string().regex(/^oc_[a-zA-Z0-9]+$/),
 });
-export type FeishuCredentials = z.infer<typeof schema>;
+export type FeishuCredentials = z.infer<typeof credentialsSchema>;
 export function readCredentials(path: string): FeishuCredentials {
   let fd: number | undefined;
   try {
@@ -23,15 +23,19 @@ export function readCredentials(path: string): FeishuCredentials {
       info.size > 16_384
     )
       throw new Error();
-    return schema.parse(JSON.parse(readFileSync(fd, 'utf8')));
+    return credentialsSchema.parse(JSON.parse(readFileSync(fd, 'utf8')));
   } catch {
     throw new TaskError('飞书凭据必须为当前用户私有文件，且包含有效的五个字段');
   } finally {
     if (fd !== undefined) closeSync(fd);
   }
 }
-export function gatewayCredentials(config: GatewayConfig) {
-  const credentials = readCredentials(config.feishu.credentialsFile);
+export function gatewayCredentials(config: GatewayConfig, supplied?: FeishuCredentials) {
+  if (config.feishu.credentialsSource === 'desktop' && !supplied)
+    throw new TaskError('桌面凭据仅可由 App 的私有进程通道提供');
+  const credentials = supplied
+    ? credentialsSchema.parse(supplied)
+    : readCredentials(config.feishu.credentialsFile!);
   for (const field of ['appId', 'tenantKey', 'allowedOpenId'] as const)
     if (credentials[field] !== config.feishu[field])
       throw new TaskError('Gateway 与凭据中的身份不匹配');

@@ -30,7 +30,7 @@ import { inspectTaskDatabase } from './doctor.js';
 const output = (value: unknown) => process.stdout.write(JSON.stringify(value, null, 2) + '\n');
 const domain = () => `gui/${process.getuid!()}`;
 const target = (role: ServiceRole) => `${domain()}/${labels[role]}`;
-function loaded(role: ServiceRole, expectedPath?: string) {
+export function loaded(role: ServiceRole, expectedPath?: string) {
   try {
     const report = execFileSync('/bin/launchctl', ['print', target(role)], {
       stdio: 'pipe',
@@ -65,7 +65,7 @@ function launch(args: string[]) {
     throw new TaskError('launchctl 操作失败；请运行 service-status 核对实际状态');
   }
 }
-function assertQuietDatabase(config: GatewayConfig) {
+export function assertQuietDatabase(config: GatewayConfig) {
   const path = runtimePaths(config.dataDir).database;
   if (!existsSync(path)) return;
   const db = openReadonlyDatabase(path);

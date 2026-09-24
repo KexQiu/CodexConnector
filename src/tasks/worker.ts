@@ -1,11 +1,11 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import type { GatewayConfig } from '../config/schema.js';
-import { GATEWAY_THREAD_POLICY } from '../codex/protocol.js';
 import { CodexRpcClient, RpcRejectedError, RpcTransportError } from '../codex/rpc-client.js';
 import { threadResultSchema, turnResultSchema, turnsPageSchema } from '../codex/schemas.js';
 import { isTerminal, type OwnerIdentity } from '../domain/model.js';
-import { canonicalDirectory, writableProject } from '../projects/store.js';
+import { canonicalDirectory, executableProject, checkoutRoot } from '../projects/store.js';
+import { assertThreadPolicy, executionPolicy } from './project-policy.js';
 import { OutboxStore } from './outbox.js';
 import { ownerKey, type TaskStore } from './store.js';
 import { durableTurnSchema, TaskError, type StoredTask } from './types.js';
@@ -27,6 +27,8 @@ export class TaskWorker {
   private lease: string | undefined;
   private activeOperation: { id: string; method: string } | undefined;
   private fatal = false;
+  private stopping = false;
+  private dispatching = false;
   private readonly subscribedThreads = new Set<string>();
   readonly owner: string;
   readonly interactions: Interactions;
@@ -139,7 +141,29 @@ export class TaskWorker {
       throw new TaskError('worker 未就绪，停止派发');
   }
   private policy(task: StoredTask) {
-    return { ...GATEWAY_THREAD_POLICY, cwd: task.cwd, runtimeWorkspaceRoots: [task.cwd] };
+    return executionPolicy(
+      executableProject(this.config.projects, task.project_key, task.cwd),
+      task.cwd,
+    );
+  }
+  private async verifyProjectTools(task: StoredTask) {
+    if (!executableProject(this.config.projects, task.project_key, task.cwd).remotePermissions)
+      return;
+    // MCP tools run outside the command sandbox. Inspect the project layer as well
+    // as the service defaults; a newly introduced server must not bypass local caps.
+    const effective = await this.rpc.request(
+      'config/read',
+      { cwd: task.cwd, includeLayers: false },
+      z.object({
+        config: z.object({
+          mcp_servers: z
+            .record(z.string(), z.object({ enabled: z.boolean().optional() }))
+            .default({}),
+        }),
+      }),
+    );
+    if (Object.values(effective.config.mcp_servers).some((server) => server.enabled !== false))
+      throw new TaskError('项目存在未隔离的 MCP 工具');
   }
   private async mutating<T>(
     operationId: string,
@@ -156,28 +180,57 @@ export class TaskWorker {
   }
 
   async dispatchNext(): Promise<StoredTask | null> {
+    if (this.stopping || this.dispatching || this.activeOperation) return null;
     this.ensureReady();
-    const task = this.store
+    this.dispatching = true;
+    try {
+      return await this.dispatchQueued();
+    } finally {
+      this.dispatching = false;
+    }
+  }
+  private async dispatchQueued(): Promise<StoredTask | null> {
+    const queued = this.store
       .list(this.owner)
       .filter((entry) => entry.status === 'queued')
-      .sort((a, b) => a.created_at - b.created_at || a.task_id.localeCompare(b.task_id))[0];
-    if (!task) return null;
-    try {
-      writableProject(this.config.projects, task.project_key, task.cwd);
-    } catch {
-      this.store.fail(task.task_id, 'thread_start', 'project_not_writable');
-      return this.store.get(task.task_id);
+      .sort((a, b) => a.created_at - b.created_at || a.task_id.localeCompare(b.task_id));
+    let selected: { task: StoredTask; operation: string } | undefined;
+    for (const task of queued) {
+      let root: string;
+      try {
+        executableProject(this.config.projects, task.project_key, task.cwd);
+        root = checkoutRoot(task.cwd);
+      } catch {
+        this.store.fail(task.task_id, 'thread_start', 'project_not_writable');
+        return this.store.get(task.task_id);
+      }
+      const operation = this.store.claim(task.task_id, this.rpc.connectionEpoch, {
+        maxConcurrentTasks: this.config.maxConcurrentTasks,
+        checkoutRoot: root,
+      });
+      if (operation) {
+        selected = { task, operation };
+        break;
+      }
     }
-    let operation = this.store.claim(task.task_id, this.rpc.connectionEpoch);
-    if (!operation) return null;
+    if (!selected) return null;
+    const { task } = selected;
+    let { operation } = selected;
     let phase: 'thread_start' | 'turn_start' = 'thread_start';
     try {
+      try {
+        await this.verifyProjectTools(task);
+      } catch {
+        this.store.settleOperation(operation, 'not_sent');
+        this.store.fail(task.task_id, 'thread_start', 'project_tools_not_isolated');
+        return this.store.get(task.task_id);
+      }
       if (task.thread_id) this.store.ownedThread(task.thread_id, this.owner);
       const response = task.thread_id
         ? await this.mutating(operation, 'thread/resume', () =>
             this.rpc.request(
               'thread/resume',
-              { ...this.policy(task), threadId: task.thread_id ?? '', excludeTurns: true },
+              { ...this.policy(task).thread, threadId: task.thread_id ?? '', excludeTurns: true },
               threadResultSchema,
               45_000,
             ),
@@ -185,7 +238,7 @@ export class TaskWorker {
         : await this.mutating(operation, 'thread/start', () =>
             this.rpc.request(
               'thread/start',
-              { ...this.policy(task), historyMode: 'legacy', ephemeral: false },
+              { ...this.policy(task).thread, historyMode: 'legacy', ephemeral: false },
               threadResultSchema,
               45_000,
             ),
@@ -193,6 +246,16 @@ export class TaskWorker {
       this.store.settleOperation(operation, 'known', { threadId: response.thread.id });
       if (canonicalDirectory(response.thread.cwd) !== task.cwd)
         throw new TaskError('服务端执行目录不匹配');
+      try {
+        assertThreadPolicy(
+          executableProject(this.config.projects, task.project_key, task.cwd),
+          task.cwd,
+          response,
+        );
+      } catch {
+        this.store.fail(task.task_id, 'thread_start', 'project_policy_mismatch');
+        return this.store.get(task.task_id);
+      }
       this.subscribedThreads.add(response.thread.id);
       if (response.thread.status.type === 'active' || response.thread.status.type === 'systemError')
         throw new TaskError('会话已有执行或状态异常，不能提交新 turn');
@@ -204,6 +267,11 @@ export class TaskWorker {
       );
       this.metrics.metadata(response.thread.id, response.thread);
       phase = 'turn_start';
+      if (this.stopping) {
+        this.store.settleOperation(operation, 'not_sent');
+        this.store.fail(task.task_id, 'turn_start', 'desktop_stopped');
+        return this.store.get(task.task_id);
+      }
       const result = await this.mutating(operation, 'turn/start', () =>
         this.rpc.request(
           'turn/start',
@@ -211,17 +279,7 @@ export class TaskWorker {
             threadId: response.thread.id,
             clientUserMessageId: task.task_id,
             input: [{ type: 'text', text: task.prompt, text_elements: [] }],
-            cwd: task.cwd,
-            runtimeWorkspaceRoots: [task.cwd],
-            approvalPolicy: 'on-request',
-            approvalsReviewer: 'user',
-            sandboxPolicy: {
-              type: 'workspaceWrite',
-              writableRoots: [task.cwd],
-              networkAccess: false,
-              excludeTmpdirEnvVar: true,
-              excludeSlashTmp: true,
-            },
+            ...this.policy(task).turn,
           },
           turnResultSchema,
           45_000,
@@ -278,21 +336,31 @@ export class TaskWorker {
         let subscribed = false;
         let unavailableReason = 'subscription_unavailable';
         try {
-          writableProject(this.config.projects, task.project_key, task.cwd);
+          executableProject(this.config.projects, task.project_key, task.cwd);
           if (this.subscribedThreads.has(task.thread_id)) {
             subscribed = true;
           } else {
+            await this.verifyProjectTools(task);
             const operation = this.store.recoveryOperation(task.task_id, this.rpc.connectionEpoch);
             try {
               const resumed = await this.mutating(operation, 'thread/resume', () =>
                 this.rpc.request(
                   'thread/resume',
-                  { ...this.policy(task), threadId: task.thread_id ?? '', excludeTurns: true },
+                  {
+                    ...this.policy(task).thread,
+                    threadId: task.thread_id ?? '',
+                    excludeTurns: true,
+                  },
                   threadResultSchema,
                 ),
               );
               if (resumed.thread.id !== task.thread_id || resumed.thread.cwd !== task.cwd)
                 throw new TaskError('恢复会话不匹配');
+              assertThreadPolicy(
+                executableProject(this.config.projects, task.project_key, task.cwd),
+                task.cwd,
+                resumed,
+              );
               this.store.settleOperation(operation, 'known');
               this.subscribedThreads.add(task.thread_id);
               subscribed = true;
@@ -364,6 +432,37 @@ export class TaskWorker {
     await this.controls.next(this.rpc, this.config, (id, method, call) =>
       this.mutating(id, method, call),
     );
+  }
+  stopDispatch() {
+    this.stopping = true;
+  }
+  async interruptOwnedTasks(timeoutMs = 10_000) {
+    this.stopping = true;
+    for (const task of this.store.list(this.owner)) {
+      if (task.status === 'queued') this.store.cancelQueued(task.task_id);
+      if (task.status === 'running' && task.thread_id && task.turn_id && this.rpc.isReady) {
+        this.store.ownedThread(task.thread_id, this.owner);
+        this.controls.enqueue(
+          `desktop-stop:${task.task_id}:${task.turn_id}`,
+          task.task_id,
+          'interrupt',
+        );
+      }
+    }
+    const deadline = Date.now() + timeoutMs;
+    while (
+      this.rpc.isReady &&
+      Date.now() < deadline &&
+      this.store.list(this.owner).some((t) => t.status === 'running')
+    ) {
+      await this.controls.next(this.rpc, this.config, (id, method, call) =>
+        this.mutating(id, method, call),
+      );
+      await delay(50);
+    }
+    for (const task of this.store.list(this.owner))
+      if (['starting', 'running'].includes(task.status))
+        this.store.unknown(task.task_id, 'desktop_stop_unconfirmed');
   }
   async waitForTask(id: string, timeoutMs = 120_000) {
     const deadline = Date.now() + timeoutMs;

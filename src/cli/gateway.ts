@@ -5,7 +5,7 @@ import { runtimePaths } from '../config/schema.js';
 import { openGatewayDatabase } from '../persistence/database.js';
 import { TaskStore } from '../tasks/store.js';
 import { TaskError } from '../tasks/types.js';
-import { gatewayCredentials } from '../feishu/credentials.js';
+import { gatewayCredentials, type FeishuCredentials } from '../feishu/credentials.js';
 import { FeishuRuntime } from '../feishu/runtime.js';
 import { FeishuApi } from '../feishu/api.js';
 import { FeishuInbox } from '../feishu/inbound.js';
@@ -18,11 +18,13 @@ export async function runGatewayCli(
     observe?: (state: { rpcReady: boolean; feishuConnected: boolean; ready: boolean }) => void;
     rpcAllowed?: () => boolean;
     signal?: AbortSignal;
+    credentials?: FeishuCredentials;
+    interruptOnStop?: boolean;
   },
   recover = false,
 ) {
   process.umask(0o077);
-  const credentials = gatewayCredentials(config);
+  const credentials = gatewayCredentials(config, options.credentials);
   mkdirSync(config.dataDir, { recursive: true, mode: 0o700 });
   const info = lstatSync(config.dataDir);
   if (!info.isDirectory() || info.uid !== process.getuid?.() || (info.mode & 0o077) !== 0)
@@ -33,7 +35,8 @@ export async function runGatewayCli(
   let heartbeat: NodeJS.Timeout | undefined;
   const stop = () => {
     stopped = true;
-    runtime?.close();
+    if (options.interruptOnStop) runtime?.beginShutdown();
+    else runtime?.close();
   };
   try {
     const store = new TaskStore(db);
@@ -91,6 +94,7 @@ export async function runGatewayCli(
     }
     return 0;
   } finally {
+    if (options.interruptOnStop && runtime) await runtime.shutdown();
     runtime?.close();
     if (heartbeat) clearInterval(heartbeat);
     options.observe?.({

@@ -1,3 +1,8 @@
+import {
+  canExecuteProject,
+  projectPermissionLabel,
+  type ProjectAccess,
+} from '../config/project-policy.js';
 import type { TaskStore } from '../tasks/store.js';
 import { TaskError } from '../tasks/types.js';
 import { cardTime, type CardLayout } from './card-layout.js';
@@ -18,7 +23,7 @@ export const navigationButtons = (): NoticeButton[] => [
   { label: '任务列表', action: 'tasks', page: 0, expiresAt: Date.now() + DRAFT_TTL },
 ];
 
-type Project = { key: string; name: string; available: boolean; remoteWrite: boolean };
+type Project = { key: string; name: string; available: boolean } & ProjectAccess;
 export function projectPickerCard(
   projects: Project[],
   page: number,
@@ -42,7 +47,7 @@ export function projectPickerCard(
   const buttons: NoticeButton[] = [];
   const expiresAt = draft?.expiresAt ?? Date.now() + DRAFT_TTL;
   for (const project of projects.slice(page * PROJECT_PAGE_SIZE, (page + 1) * PROJECT_PAGE_SIZE)) {
-    const selectable = project.available && project.remoteWrite;
+    const selectable = project.available && canExecuteProject(project);
     const actions = selectable ? [buttons.length] : [];
     if (selectable)
       buttons.push({
@@ -55,13 +60,7 @@ export function projectPickerCard(
     layout.sections.push({
       title: `${currentProject === project.key ? '当前 · ' : ''}${shortText(project.name, 80)}`,
       text: project.key,
-      notes: [
-        !project.available
-          ? '路径失效 · 暂时不能执行'
-          : project.remoteWrite
-            ? '可执行 · 已开放远程任务'
-            : '只读 · 尚未开放远程执行',
-      ],
+      notes: [!project.available ? '路径失效 · 暂时不能执行' : projectPermissionLabel(project)],
       actions,
     });
   }

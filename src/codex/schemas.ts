@@ -19,7 +19,11 @@ export const threadSchema = z.object({
   status: z.object({ type: z.enum(['notLoaded', 'idle', 'active', 'systemError']) }),
   turns: z.array(turnSchema),
 });
-export const threadResultSchema = z.object({ thread: threadSchema });
+export const threadResultSchema = z.object({
+  thread: threadSchema,
+  approvalPolicy: z.unknown().optional(),
+  sandbox: z.unknown().optional(),
+});
 export const threadListSchema = z.object({
   data: z.array(threadSchema),
   nextCursor: z.string().nullable(),

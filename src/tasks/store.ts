@@ -19,6 +19,8 @@ import {
   type StoredTask,
 } from './types.js';
 import type { RpcNotification, RpcServerRequest } from '../codex/rpc-client.js';
+import { maxConcurrentTasksSchema } from '../config/project-policy.js';
+import { contains } from '../projects/store.js';
 
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 export const ownerKey = (owner: OwnerIdentity) =>
@@ -167,6 +169,14 @@ export class TaskStore {
       })
       .immediate();
   }
+  cancelQueued(id: string) {
+    this.db
+      .transaction(() => {
+        if (this.get(id).status === 'queued')
+          this.transition(id, 'interrupted', null, 'desktop_stopped');
+      })
+      .immediate();
+  }
   private transition(
     id: string,
     status: TaskStatus,
@@ -218,19 +228,35 @@ export class TaskStore {
       cwd: task.cwd,
     });
   }
-  claim(id: string, epoch: string): string | null {
+  claim(
+    id: string,
+    epoch: string,
+    options: { maxConcurrentTasks?: number; checkoutRoot?: string } = {},
+  ): string | null {
+    const limit = maxConcurrentTasksSchema.parse(options.maxConcurrentTasks);
     return this.db
       .transaction(() => {
         const task = this.get(id);
+        const occupied = this.db
+          .prepare("SELECT count(*) FROM tasks WHERE status IN ('starting','running','unknown')")
+          .pluck()
+          .get() as number;
+        if (task.status !== 'queued' || occupied >= limit) return null;
+        const root = options.checkoutRoot ?? task.cwd;
+        const locks = z
+          .array(z.object({ lock_key: z.string() }))
+          .parse(this.db.prepare('SELECT lock_key FROM execution_locks').all());
         if (
-          task.status !== 'queued' ||
-          this.db
-            .prepare("SELECT 1 FROM tasks WHERE status IN ('starting','running','unknown') LIMIT 1")
-            .get()
+          locks.some(
+            ({ lock_key: key }) =>
+              key === `thread:${task.thread_id}` ||
+              (key.startsWith('checkout:') &&
+                (contains(root, key.slice(9)) || contains(key.slice(9), root))),
+          )
         )
           return null;
         for (const key of [
-          `checkout:${task.cwd}`,
+          `checkout:${root}`,
           ...(task.thread_id ? [`thread:${task.thread_id}`] : []),
         ]) {
           this.db.prepare('INSERT INTO execution_locks VALUES (?, ?, ?)').run(key, id, Date.now());

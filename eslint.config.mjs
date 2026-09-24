@@ -10,6 +10,8 @@ export default [
       '.pnpm-store/**',
       '.artifacts/**',
       'src/codex/generated/**',
+      'apps/desktop/dist/**',
+      'apps/desktop/out/**',
     ],
   },
   {
@@ -25,9 +27,12 @@ export default [
       },
     },
   },
-  ...tseslint.configs.recommendedTypeChecked.map((config) => ({ ...config, files: ['**/*.ts'] })),
+  ...tseslint.configs.recommendedTypeChecked.map((config) => ({
+    ...config,
+    files: ['**/*.ts', '**/*.tsx'],
+  })),
   {
-    files: ['**/*.ts'],
+    files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },

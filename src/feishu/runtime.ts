@@ -196,14 +196,28 @@ export class FeishuRuntime {
     if (!this.closing) await this.sender.flushOne();
   }
   close() {
-    this.closing = true;
-    this.connected = false;
-    this.ws?.close({ force: true });
-    this.notifyReceiver?.close();
+    this.beginShutdown();
     this.worker.close();
     if (this.lease) {
       this.store.db.prepare('DELETE FROM feishu_runtime_lease WHERE token = ?').run(this.lease);
       this.lease = undefined;
     }
+  }
+  beginShutdown() {
+    this.closing = true;
+    this.connected = false;
+    this.ws?.close({ force: true });
+    this.notifyReceiver?.close();
+    this.worker.stopDispatch();
+  }
+  async shutdown() {
+    this.beginShutdown();
+    // Accepted but undispatched commands must not unexpectedly run after reopening.
+    this.store.db
+      .prepare(
+        "UPDATE feishu_commands SET state='processed', error_code='desktop_stopped' WHERE owner_key=? AND state!='processed'",
+      )
+      .run(this.worker.owner);
+    await this.worker.interruptOwnedTasks();
   }
 }

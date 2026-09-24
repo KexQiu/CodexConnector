@@ -255,6 +255,49 @@ describe('M4 actual SQLite, WebSocket RPC and Feishu business routing; simulated
     db.close();
     rmSync(dir, { recursive: true, force: true });
   });
+  it('rejects permission escalation for strict local policies without offering an approval card', async () => {
+    delete config.projects[0].remoteWrite;
+    config.projects[0].remotePermissions = { mode: 'read-only', networkAccess: false };
+    const row = await sendRequest('item/commandExecution/requestApproval', commandParams());
+    await wait(() => replies.length === 1);
+    expect(row.state).toBe('unsupported');
+    expect(replies[0].error).toBeTruthy();
+    expect(store.get(task.task_id).waiting_approval).toBe(0);
+  });
+  it('does not send a previously selected grant after a stricter policy is applied', async () => {
+    const row = await sendRequest('item/commandExecution/requestApproval', commandParams());
+    worker.interactions.decide(row.approval_id, 'accept');
+    delete config.projects[0].remoteWrite;
+    config.projects[0].remotePermissions = { mode: 'workspace-write', networkAccess: false };
+    await worker.tickInteractions();
+    await wait(() => replies.length === 1);
+    expect(replies[0].error).toBeTruthy();
+    expect(rows()[0].error_code).toBe('permission_changed');
+  });
+  it('still accepts ordinary clarification answers in a readonly project', async () => {
+    delete config.projects[0].remoteWrite;
+    config.projects[0].remotePermissions = { mode: 'read-only', networkAccess: false };
+    const row = await sendRequest('item/tool/requestUserInput', {
+      ...params(),
+      isBlocking: true,
+      autoResolutionMs: null,
+      questions: [
+        {
+          id: 'q',
+          header: '范围',
+          question: '请说明范围',
+          isOther: true,
+          isSecret: false,
+          options: null,
+        },
+      ],
+    });
+    expect(store.get(task.task_id).waiting_input).toBe(1);
+    worker.interactions.answer(row.approval_id, 1, '仅分析');
+    await worker.tickInteractions();
+    await wait(() => replies.length === 1);
+    expect(replies[0].result).toEqual({ answers: { q: { answers: ['仅分析'] } } });
+  });
   it.each(['accept', 'decline', 'cancel'])(
     'maps command %s and commits the reply intent before the actual wire',
     async (choice) => {

@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { chmodSync, lstatSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import { runtimePaths } from '../config/schema.js';
@@ -8,7 +8,7 @@ import { CodexRpcClient } from '../codex/rpc-client.js';
 import { runGatewayCli } from '../cli/gateway.js';
 import { inspectTaskDatabase } from '../cli/doctor.js';
 import { TaskError } from '../tasks/types.js';
-import { processAlive, servicePaths } from './files.js';
+import { privateDirectory, servicePaths } from './files.js';
 import { validateManifest, type ServiceManifest } from './plan.js';
 import {
   ServiceLeases,
@@ -19,7 +19,10 @@ import {
 } from './state.js';
 import { clearStaleSocket } from './socket.js';
 import { RotatingLog } from './log.js';
+import type { GatewayConfig } from '../config/schema.js';
+import type { FeishuCredentials } from '../feishu/credentials.js';
 import { maintain } from './maintenance.js';
+import { ownedChildAlive, stopOwnedChild } from './child.js';
 
 const isolationSchema = z.object({
   config: z.object({
@@ -27,9 +30,21 @@ const isolationSchema = z.object({
     features: z.record(z.string(), z.unknown()),
   }),
 });
-export async function runService(manifest: ServiceManifest, role: ServiceRole) {
+export type ServiceRuntimeOptions = {
+  validate?: () => Promise<GatewayConfig>;
+  credentials?: FeishuCredentials;
+  signal?: AbortSignal;
+  desktop?: boolean;
+  onChild?: (pid: number | null) => void;
+};
+export async function runService(
+  manifest: ServiceManifest,
+  role: ServiceRole,
+  options: ServiceRuntimeOptions = {},
+) {
   process.umask(0o077);
-  const config = await validateManifest(manifest);
+  const validate = options.validate ?? (() => validateManifest(manifest));
+  const config = await validate();
   const leases = new ServiceLeases(config.dataDir);
   let token: string;
   try {
@@ -59,7 +74,9 @@ export async function runService(manifest: ServiceManifest, role: ServiceRole) {
     child: ChildProcess | undefined,
     rpc: CodexRpcClient | undefined,
     attempts = 0;
-  const socket = runtimePaths(config.dataDir).socket;
+  const socket = options.desktop
+    ? config.codex.endpoint.slice('unix://'.length)
+    : runtimePaths(config.dataDir).socket;
   let ownedSocket: { ino: number; dev: number } | undefined;
   let priorStatus = '';
   let lastSample = 0;
@@ -112,8 +129,12 @@ export async function runService(manifest: ServiceManifest, role: ServiceRole) {
     state.phase = 'stopping';
     controller.abort();
   };
-  process.once('SIGTERM', stop);
-  process.once('SIGINT', stop);
+  if (!options.desktop) {
+    process.once('SIGTERM', stop);
+    process.once('SIGINT', stop);
+  }
+  options.signal?.addEventListener('abort', stop, { once: true });
+  if (options.signal?.aborted) stop();
   publish();
   const heartbeat = setInterval(() => {
     try {
@@ -130,22 +151,10 @@ export async function runService(manifest: ServiceManifest, role: ServiceRole) {
     rpc?.close();
     rpc = undefined;
     const owned = child;
-    if (owned && owned.exitCode === null && owned.signalCode === null && owned.pid) {
-      owned.kill('SIGTERM');
-      const deadline = Date.now() + 8000;
-      while (owned.exitCode === null && owned.signalCode === null && Date.now() < deadline)
-        await delay(100);
-      if (owned.exitCode === null && owned.signalCode === null) {
-        owned.kill('SIGKILL');
-        const killedDeadline = Date.now() + 3000;
-        while (owned.exitCode === null && owned.signalCode === null && Date.now() < killedDeadline)
-          await delay(50);
-      }
-      if (owned.exitCode === null && owned.signalCode === null)
-        throw new TaskError('自有 App Server 尚未退出');
-    }
+    if (owned) await stopOwnedChild(owned, options.desktop ?? false);
     child = undefined;
     leases.child(token, null);
+    options.onChild?.(null);
     if (ownedSocket) {
       try {
         const current = lstatSync(socket);
@@ -162,10 +171,12 @@ export async function runService(manifest: ServiceManifest, role: ServiceRole) {
       let lastMaintenance = 0;
       while (!stopped) {
         try {
-          await validateManifest(manifest);
+          await validate();
           // RPC remains gated while the independent server checks its effective isolation.
           const operation = runGatewayCli(config, {
             signal: controller.signal,
+            ...(options.credentials ? { credentials: options.credentials } : {}),
+            interruptOnStop: options.desktop ?? false,
             rpcAllowed: () => readHealth(config.dataDir, 'app-server').ready,
             observe: (value) => {
               Object.assign(state, value);
@@ -204,6 +215,10 @@ export async function runService(manifest: ServiceManifest, role: ServiceRole) {
         }
       }
     } else {
+      // Codex may implicitly include its startup cwd in command sandbox writes.
+      // Keep that cwd away from credentials, configuration, SQLite and logs.
+      const sandboxCwd = join(servicePaths(config.dataDir).root, 'sandbox-cwd');
+      privateDirectory(sandboxCwd);
       const overrides = [
         'notify=[]',
         'features.hooks=false',
@@ -219,7 +234,7 @@ export async function runService(manifest: ServiceManifest, role: ServiceRole) {
         state.rpcReady = false;
         publish();
         try {
-          await validateManifest(manifest);
+          await validate();
           await clearStaleSocket(socket);
           let exited = false;
           child = spawn(
@@ -231,9 +246,18 @@ export async function runService(manifest: ServiceManifest, role: ServiceRole) {
               ...overrides.flatMap((value) => ['-c', value]),
             ],
             {
-              cwd: config.dataDir,
-              env: { ...process.env, CODEX_HOME: manifest.codexHome },
+              cwd: sandboxCwd,
+              env: {
+                ...process.env,
+                CODEX_HOME: manifest.codexHome,
+                ...(options.desktop
+                  ? {
+                      PATH: `${dirname(manifest.node)}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin`,
+                    }
+                  : {}),
+              },
               stdio: ['ignore', 'ignore', 'ignore'],
+              detached: options.desktop ?? false,
             },
           );
           child.once('exit', () => {
@@ -242,7 +266,10 @@ export async function runService(manifest: ServiceManifest, role: ServiceRole) {
           child.once('error', () => {
             exited = true;
           });
-          if (child.pid) leases.child(token, child.pid);
+          if (child.pid) {
+            leases.child(token, child.pid, options.desktop ?? false);
+            options.onChild?.(child.pid);
+          }
           const deadline = Date.now() + 30_000;
           while (!stopped && !exited && Date.now() < deadline) {
             rpc = new CodexRpcClient({ endpoint: config.codex.endpoint, timeoutMs: 2000 });
@@ -325,10 +352,11 @@ export async function runService(manifest: ServiceManifest, role: ServiceRole) {
         publish();
       } finally {
         // A surviving owned child must continue blocking another supervisor.
-        if (!child?.pid || !processAlive(child.pid)) leases.release(token);
+        if (!child || !ownedChildAlive(child, options.desktop ?? false)) leases.release(token);
         leases.close();
         process.off('SIGTERM', stop);
         process.off('SIGINT', stop);
+        options.signal?.removeEventListener('abort', stop);
       }
     }
   }

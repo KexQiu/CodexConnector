@@ -1,10 +1,11 @@
-import { realpathSync, statSync } from 'node:fs';
-import { relative, isAbsolute, sep } from 'node:path';
+import { lstatSync, realpathSync, statSync } from 'node:fs';
+import { dirname, join, relative, isAbsolute, sep } from 'node:path';
 import { z } from 'zod';
 import type { GatewayConfig } from '../config/schema.js';
 import type { CodexRpcClient } from '../codex/rpc-client.js';
 import { threadListSchema } from '../codex/schemas.js';
 import { TaskError } from '../tasks/types.js';
+import { canExecuteProject, projectPermissions } from '../config/project-policy.js';
 
 const projectPage = z.object({
   data: z.array(
@@ -22,15 +23,26 @@ export function canonicalDirectory(path: string): string {
   }
   throw new TaskError('项目目录不存在或不可访问');
 }
-function contains(root: string, path: string) {
+export function contains(root: string, path: string) {
   const suffix = relative(root, path);
   return (
     suffix === '' || (!suffix.startsWith(`..${sep}`) && suffix !== '..' && !isAbsolute(suffix))
   );
 }
 export function writableProject(projects: ConfiguredProject[], key: string, expectedCwd?: string) {
+  const project = executableProject(projects, key, expectedCwd);
+  if (projectPermissions(project).mode !== 'workspace-write')
+    throw new TaskError('项目未开启文件修改权限');
+  return project;
+}
+export function executableProject(
+  projects: ConfiguredProject[],
+  key: string,
+  expectedCwd?: string,
+) {
   const project = projects.find((entry) => entry.key === key);
-  if (!project?.remoteWrite) throw new TaskError('项目未开启 remoteWrite');
+  if (!project || !canExecuteProject(project))
+    throw new TaskError('项目未开放远程执行（remoteWrite / remotePermissions）');
   const cwd = canonicalDirectory(project.root);
   if (expectedCwd && cwd !== expectedCwd) throw new TaskError('项目目录已改变，拒绝按旧任务执行');
   const aliases = projects.filter((other) => {
@@ -43,6 +55,21 @@ export function writableProject(projects: ConfiguredProject[], key: string, expe
   });
   if (aliases.length) throw new TaskError('多个项目 key 指向同一规范目录，请消除歧义');
   return { ...project, cwd };
+}
+
+/** A worktree's .git file marks its own checkout; subdirectories share the parent lock. */
+export function checkoutRoot(cwd: string): string {
+  const canonical = canonicalDirectory(cwd);
+  for (let current = canonical; ; current = dirname(current)) {
+    try {
+      const marker = lstatSync(join(current, '.git'));
+      if (marker.isFile() || marker.isDirectory()) return current;
+      throw new TaskError('Git 目录标记不安全');
+    } catch (error) {
+      if (!(error instanceof Error) || !('code' in error) || error.code !== 'ENOENT') throw error;
+    }
+    if (dirname(current) === current) return canonical;
+  }
 }
 
 export class ProjectStore {

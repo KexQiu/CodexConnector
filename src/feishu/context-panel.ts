@@ -1,3 +1,4 @@
+import { canExecuteProject, projectPermissionLabel } from '../config/project-policy.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { GatewayConfig } from '../config/schema.js';
@@ -99,7 +100,7 @@ export class ContextPanel {
     const text =
       `当前项目：${project ? shortText(project.name, 80) + '（' + project.key + '）' : (context?.project_key ?? '尚未选择')}\n` +
       `当前会话：${task ? topicTitle(this.store, task) : '新话题'}\n任务状态：${status}\n` +
-      `排队消息：${queued + waiting} 条\n` +
+      `排队消息：${queued + waiting} 条\n权限：${projectPermissionLabel(project)}\n` +
       metrics.sessionText(
         task?.thread_id ?? null,
         state?.turn_id ?? null,
@@ -110,7 +111,7 @@ export class ContextPanel {
       '\n' +
       (state?.waiting_approval ? '等待审批，请在对应任务卡操作。\n' : '') +
       (state?.waiting_input ? '等待补充输入，请查看对应任务卡。\n' : '') +
-      (context && !project?.remoteWrite ? '该项目未开放执行权限。\n' : '') +
+      (context && !canExecuteProject(project) ? '该项目未开放执行权限。\n' : '') +
       (!context
         ? '先选择项目，或直接发送需求后按提示选择。'
         : task
@@ -178,7 +179,7 @@ export class ContextPanel {
         ...(state?.waiting_approval ? ['请在对应任务卡查看操作范围并选择是否批准。'] : []),
         ...(state?.waiting_input ? ['需要补充输入，请查看对应任务卡。'] : []),
         ...(state && taskFailureDescription(state) ? [taskFailureDescription(state)] : []),
-        ...(context && !project?.remoteWrite ? ['该项目目前只读，未开放执行权限。'] : []),
+        ...(context && !canExecuteProject(project) ? ['该项目目前只读，未开放执行权限。'] : []),
       ],
       sections: project
         ? sessionSections(
@@ -190,6 +191,7 @@ export class ContextPanel {
           )
         : [],
       notes: [
+        ...(project ? [`权限：${projectPermissionLabel(project)}`] : []),
         !context
           ? '先选择项目，或直接发送需求后按提示选择。'
           : task

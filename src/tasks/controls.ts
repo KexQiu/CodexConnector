@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { GatewayConfig } from '../config/schema.js';
 import { RpcRejectedError, RpcTransportError, type CodexRpcClient } from '../codex/rpc-client.js';
-import { writableProject } from '../projects/store.js';
+import { executableProject } from '../projects/store.js';
 import type { TaskStore } from './store.js';
 import { TaskError } from './types.js';
 
@@ -78,7 +78,8 @@ export class TaskControls {
       return true;
     }
     try {
-      writableProject(config.projects, task.project_key, task.cwd);
+      this.store.ownedThread(task.thread_id, this.owner);
+      if (row.kind === 'steer') executableProject(config.projects, task.project_key, task.cwd);
     } catch {
       finish('rejected', 'project_not_writable');
       return true;

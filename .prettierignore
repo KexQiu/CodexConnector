@@ -7,3 +7,4 @@ src/codex/generated/
 schemas/codex/
 pnpm-lock.yaml
 config/*.local.json
+apps/desktop/out/

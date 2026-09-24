@@ -1,10 +1,17 @@
 packages:
   - .
+  - apps/desktop
 minimumReleaseAgeExclude:
   - '@vitest/mocker@5.0.1'
   - '@vitest/spy@5.0.1'
   - vitest@5.0.1
+  - electron@44.4.5
 strictPeerDependencies: true
+# Keep pnpm's default private hoisting explicit for Electron Forge's package check.
+hoistPattern:
+  - '*'
 storeDir: .pnpm-store
 ignoreScripts: true
+overrides:
+  '@electron/rebuild': 4.2.0
 verifyDepsBeforeRun: error

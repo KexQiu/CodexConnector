@@ -19,3 +19,4 @@ config/*.local.json
 credentials.json
 **/credentials.json
 docs/gates/raw/
+apps/desktop/out/

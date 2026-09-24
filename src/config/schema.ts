@@ -2,6 +2,12 @@ import { isAbsolute, join } from 'node:path';
 import { homedir } from 'node:os';
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
+import { assertLocalConfigIsProtected } from './local-boundary.js';
+import {
+  hasOneProjectPolicy,
+  maxConcurrentTasksSchema,
+  projectAccessFields,
+} from './project-policy.js';
 
 const absolutePath = z.string().min(1).refine(isAbsolute, '必须是绝对路径');
 const identifier = z.string().min(1);
@@ -48,13 +54,19 @@ export const gatewayConfigSchema = z.strictObject({
     approvalPolicy: z.literal('on-request'),
     approvalsReviewer: z.literal('user'),
   }),
-  feishu: z.strictObject({
-    appId: identifier,
-    tenantKey: identifier,
-    allowedOpenId: identifier,
-    credentialsFile: absolutePath,
-  }),
-  maxConcurrentTasks: z.literal(1),
+  feishu: z
+    .strictObject({
+      appId: identifier,
+      tenantKey: identifier,
+      allowedOpenId: identifier,
+      credentialsFile: absolutePath.optional(),
+      credentialsSource: z.literal('desktop').optional(),
+    })
+    .refine(
+      (value) => Boolean(value.credentialsFile) !== Boolean(value.credentialsSource),
+      '必须指定文件凭据或桌面安全存储，不能同时指定',
+    ),
+  maxConcurrentTasks: maxConcurrentTasksSchema,
   service: servicePolicySchema.optional(),
   notify: z
     .strictObject({
@@ -68,12 +80,14 @@ export const gatewayConfigSchema = z.strictObject({
     .optional(),
   projects: z
     .array(
-      z.strictObject({
-        key: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/),
-        name: identifier,
-        root: absolutePath,
-        remoteWrite: z.boolean(),
-      }),
+      z
+        .strictObject({
+          key: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/),
+          name: identifier,
+          root: absolutePath,
+          ...projectAccessFields,
+        })
+        .refine(hasOneProjectPolicy, '必须且只能指定 remotePermissions 或旧版 remoteWrite'),
     )
     .refine(
       (projects) => new Set(projects.map((project) => project.key)).size === projects.length,
@@ -125,5 +139,10 @@ export async function loadConfig(path: string): Promise<GatewayConfig> {
     );
     throw new ConfigurationError(`配置校验失败：${issues.join('；')}`);
   }
+  assertLocalConfigIsProtected(result.data.projects, [
+    path,
+    result.data.dataDir,
+    ...(result.data.feishu.credentialsFile ? [result.data.feishu.credentialsFile] : []),
+  ]);
   return result.data;
 }

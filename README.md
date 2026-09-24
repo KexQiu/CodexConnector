@@ -2,6 +2,8 @@
 
 通过飞书单聊管理个人 Mac 上的 Codex 任务：选择项目、提交任务、处理审批、补充或打断执行，并接收结果。
 
+macOS 桌面 App 首版代码已加入：通过界面配置飞书、管理本地项目并启停连接，配置自动缓存，并支持在安装版中设置登录 Mac 后自启。安装、构建和待完成的真实验收见 [桌面 App 使用说明](./docs/DESKTOP_APP.md)。桌面构建与当前常驻服务产物隔离，开发完成不代表现有部署已切换。
+
 M0 至 M4 阶段功能已验收。M4 审批、输入、控制和恢复：158 项本地测试通过，真实补充/重连/打断、手机命令允许/取消、逐题回答/取消、权限子集/取消、文件允许/取消、退出后恢复及写锁检查通过；手机补充和打断已分别通过，更新超时后的独立终态通知兜底也已真实验证；桌面人工交接联合验收通过，原历史保持不变、没有新增执行。阶段证据分别见 [M3 报告](./docs/gates/M3-gateway.md) 和 [M4 报告](./docs/gates/M4-interactions.md)。M5 常驻服务已安装，生命周期及飞书收发验证通过，正在人工值守试运行，操作见 [M5 部署说明](./docs/gates/M5-deployment.md)；G1 平台自动重投待补测，完整可靠性门禁尚未完成。
 
 ## 文档入口
@@ -11,6 +13,7 @@ M0 至 M4 阶段功能已验收。M4 审批、输入、控制和恢复：158 项
 | [立项说明](./PROJECT_CHARTER.md)                       | 目标、交付范围、资源估算、风险和下一检查点    |
 | [技术选型](./TECH_STACK.md)                            | 组件选择、版本策略、替代方案和待验证条件      |
 | [开发计划](./DEVELOPMENT_PLAN.md)                      | M0–M6 任务、依赖和验收要求                    |
+| [后续待办](./TODO.md)                                  | 本机项目权限、同时执行会话数等待实现需求      |
 | [技术契约](./codex-feishu-gateway.md)                  | 唯一任务提交顺序、状态、归属、恢复和进程职责  |
 | [M0 验收记录](./docs/gates/M0-foundation.md)           | 实际版本、验证命令、兼容性处理和未覆盖项      |
 | [G1 飞书状态](./docs/gates/G1-feishu.md)               | 真实收发、卡片与故障验证及覆盖范围            |
@@ -33,7 +36,7 @@ M0 至 M4 阶段功能已验收。M4 审批、输入、控制和恢复：158 项
 
 Node.js 24、TypeScript 6.0.x、pnpm、飞书官方 Node SDK、Codex App Server、ws、SQLite/better-sqlite3、Zod、Pino、Vitest、ESLint/Prettier、macOS launchd。
 
-Gateway 是一个根包和一个进程，连接独立 App Server。项目写入受白名单和执行锁控制，消息与任务状态保存在本机 SQLite。
+Gateway 后端保留在根包，桌面控制台位于 `apps/desktop` workspace，两种入口均连接独立 App Server。项目写入受白名单和执行锁控制，消息与任务状态保存在本机 SQLite。
 
 ## 环境与安装
 
@@ -83,7 +86,7 @@ pnpm run doctor
 pnpm config:check --config /Users/kex/Code/MyCode/CodexConnector/config/config.example.json
 ```
 
-示例中的用户、目录和飞书 ID 都是占位符，remoteWrite 默认 false。结构校验不等于目录、登录或飞书应用已就绪。配置路径优先级为 `--config`、`CODEX_FEISHU_CONFIG`、`~/.codex-feishu/config.json`。
+示例中的用户、目录和飞书 ID 都是占位符，新项目 remotePermissions.mode 默认 disabled。结构校验不等于目录、登录或飞书应用已就绪。配置路径优先级为 `--config`、`CODEX_FEISHU_CONFIG`、`~/.codex-feishu/config.json`。
 
 实际运行目录约定为 `~/.codex-feishu`，也可配置项目内私有 dataDir；目录 700、敏感文件 600。当前状态指标使用 schema v7，2026-09-23 已完成生产迁移；后续升级前仍须停止旧 Gateway/worker 并备份，拒绝外部业务库、迁移校验和漂移和不支持的版本。不直接写 Codex 自有数据库；M5 另用服务租约库管理两个 LaunchAgent。prompt、模型结果、审批/回答及待选项目的需求会保存在任务库中，备份同样需要保护。
 
@@ -91,7 +94,7 @@ pnpm config:check --config /Users/kex/Code/MyCode/CodexConnector/config/config.e
 
 飞书联调凭据填写在 [config/feishu.local.json](./config/feishu.local.json)，字段说明见 [config/README.md](./config/README.md)。该文件权限 `600`，不参与 Git 和格式化。它是本机联调配置，不会因为填写完成就自动发送消息。
 
-已准备被忽略的 `config/gateway.local.json`，引用已有飞书凭据；可通过 `CODEX_FEISHU_CONFIG` 指定。原 `codexconnector` 保持只读，独立测试项目 `m5fixture` 已启用写权限。当前由两个 LaunchAgent 启动 App Server 和 Gateway。新增其他可写项目需明确范围，停止并卸载服务后修改 remoteWrite，再重新生成部署清单及安装。基础步骤见 [M3 操作说明](./docs/gates/M3-gateway.md)，新库迁移和审批/控制范围见 [M4 操作](./docs/gates/M4-interactions.md)。未知提交结果会保留锁，不能用重试制造第二个 turn；M4 已通过阶段功能验收，仍需完成 M5 部署和试运行。
+已准备被忽略的 `config/gateway.local.json`，引用已有飞书凭据；可通过 `CODEX_FEISHU_CONFIG` 指定。原 `codexconnector` 保持只读，独立测试项目 `m5fixture` 已启用写权限。当前由两个 LaunchAgent 启动 App Server 和 Gateway。新增其他可写项目需明确范围，停止并卸载服务后修改项目权限，再重新生成部署清单及安装。基础步骤见 [M3 操作说明](./docs/gates/M3-gateway.md)，新库迁移和审批/控制范围见 [M4 操作](./docs/gates/M4-interactions.md)。未知提交结果会保留锁，不能用重试制造第二个 turn；M4 已通过阶段功能验收，仍需完成 M5 部署和试运行。
 
 ## RPC 门禁复测
 
@@ -129,3 +132,5 @@ M5 部署代码及其阶段 179 项全量测试通过；真实进程退出恢复
 可用 `pnpm gate:interactions --live --suite controls` 或 `--suite approvals` 启动临时测试；同一飞书应用一次只使用一个连接。G1 自动重投仍需补测，当前范围见 [G1 报告](./docs/gates/G1-feishu.md)。运行这些长连接探针前先 `service-stop`，结束后 `service-start`。
 
 M6 已开始开发，提供 `pnpm gate:notify` 配置/捕获工具和 `pnpm gate:notify:live` 隔离联调探针。通知扩展默认关闭，仅实现完成事件；真实 GUI 完成通知已送达飞书且经用户确认，重复事件本地重放通过。临时配置已逐字节恢复，桥接关闭；回滚后的新桌面任务正常完成，用户确认不再收到对应卡片。原 Computer Use 通知功能、真实离线补投及完整 G3 验收仍待完成。M6 联调时曾使用 `.artifacts/m6/build` 保持当时的线上基线；此次交互升级仍保持通知扩展关闭。不要在常驻运行或观察期间直接执行 `pnpm build` 或 `pnpm verify`。见 [M6 说明](./docs/gates/M6-notify.md)。
+
+本机项目权限和 1～8 个活跃任务并发已实现，支持 CLI 配置与 App 界面；配置说明与验收步骤见 [本机配置](./docs/LOCAL_CONFIGURATION.md)。旧 remoteWrite 配置保持兼容，切换严格权限需要在本机明确选择。

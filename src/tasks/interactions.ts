@@ -5,7 +5,8 @@ import type { CodexRpcClient, RpcNotification, RpcServerRequest } from '../codex
 import type { McpServerElicitationRequestResponse } from '../codex/generated/v2/McpServerElicitationRequestResponse.js';
 import type { DynamicToolCallResponse } from '../codex/generated/v2/DynamicToolCallResponse.js';
 import { isTerminal } from '../domain/model.js';
-import { writableProject } from '../projects/store.js';
+import { executableProject } from '../projects/store.js';
+import { assertProjectInteraction } from './project-policy.js';
 import type { TaskStore } from './store.js';
 import { TaskError } from './types.js';
 import {
@@ -98,7 +99,10 @@ export class Interactions {
     const task = tasks[0]!;
     let parsed;
     try {
-      writableProject(this.config.projects, task.project_key, task.cwd);
+      assertProjectInteraction(
+        executableProject(this.config.projects, task.project_key, task.cwd),
+        request.method,
+      );
       parsed = parseInteraction(request.method, request.params, task.cwd);
       if (!choices(parsed).length) throw new TaskError('没有受支持的审批选项');
       if (parsed.method === 'item/fileChange/requestApproval') {
@@ -353,7 +357,10 @@ export class Interactions {
       try {
         const choice = decisionSchema.parse(row.decision);
         if (!['decline', 'cancel'].includes(choice))
-          writableProject(this.config.projects, task.project_key, task.cwd);
+          assertProjectInteraction(
+            executableProject(this.config.projects, task.project_key, task.cwd),
+            row.method,
+          );
         const parsed = parseInteraction(row.method, JSON.parse(row.payload!), task.cwd);
         response = interactionResponse(
           parsed,

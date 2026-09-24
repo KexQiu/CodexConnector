@@ -1,0 +1,119 @@
+import { z } from 'zod';
+import {
+  hasOneProjectPolicy,
+  maxConcurrentTasksSchema,
+  projectAccessFields,
+} from '../config/project-policy.js';
+
+const text = z.string().max(4096);
+export const desktopSettingsSchema = z.strictObject({
+  codexBinary: text,
+  feishu: z.strictObject({ appId: text, tenantKey: text, allowedOpenId: text, testChatId: text }),
+  maxConcurrentTasks: maxConcurrentTasksSchema,
+  hiddenProjectRoots: z.array(text).max(500).default([]),
+  projects: z
+    .array(
+      z
+        .strictObject({ key: text, name: text, root: text, ...projectAccessFields })
+        .refine(hasOneProjectPolicy, '必须且只能指定一种项目权限配置'),
+    )
+    .max(100),
+});
+export type DesktopSettings = z.infer<typeof desktopSettingsSchema>;
+export type DesktopStatus = {
+  phase: 'stopped' | 'starting' | 'ready' | 'degraded' | 'stopping' | 'error';
+  rpcReady: boolean;
+  feishuConnected: boolean;
+  pending: number;
+  error: string | null;
+  tasks: { status: string; count: number }[];
+};
+export const stoppedStatus = (): DesktopStatus => ({
+  phase: 'stopped',
+  rpcReady: false,
+  feishuConnected: false,
+  pending: 0,
+  error: null,
+  tasks: [],
+});
+export type DesktopSnapshot = {
+  settings: DesktopSettings;
+  activeSettings: DesktopSettings | null;
+  hasDraft: boolean;
+  configured: boolean;
+  hasSecret: boolean;
+  hasDesktopNotifications: boolean;
+  dataDir: string;
+  status: DesktopStatus;
+};
+export type CheckResult = { ok: boolean; message: string };
+export type LoginItemState = {
+  supported: boolean;
+  canEnable: boolean;
+  status:
+    'enabled' | 'not-registered' | 'requires-approval' | 'not-found' | 'unavailable' | 'error';
+  enabled: boolean;
+  requested: boolean;
+  message: string;
+};
+export type DiscoveredProject = { key: string; name: string; root: string };
+export type ProjectDiscovery = {
+  projects: DiscoveredProject[];
+  canonicalRoots: Record<string, string>;
+  unavailable: number;
+};
+export type DesktopApi = {
+  load(): Promise<DesktopSnapshot>;
+  saveDraft(settings: DesktopSettings, secret: string): Promise<DesktopSnapshot>;
+  apply(settings: DesktopSettings, secret: string): Promise<DesktopSnapshot>;
+  checkCodex(binary: string): Promise<CheckResult>;
+  checkFeishu(settings: DesktopSettings, secret: string): Promise<CheckResult>;
+  start(): Promise<DesktopStatus>;
+  stop(): Promise<DesktopStatus>;
+  chooseDirectory(): Promise<string | null>;
+  chooseCodex(): Promise<string | null>;
+  discoverProjects(knownRoots: string[]): Promise<ProjectDiscovery>;
+  logs(): Promise<string[]>;
+  openData(): Promise<void>;
+  copyDiagnostics(): Promise<void>;
+  loginItem(): Promise<LoginItemState>;
+  setLoginItem(enabled: boolean): Promise<LoginItemState>;
+  onBeforeClose(listener: () => Promise<void>): () => void;
+  onCloseCancelled(listener: () => void): () => void;
+  onStatus(listener: (status: DesktopStatus) => void): () => void;
+  onLogs(listener: (lines: string[]) => void): () => void;
+};
+export const uiRequestSchema = z.discriminatedUnion('method', [
+  z.strictObject({
+    method: z.enum([
+      'load',
+      'start',
+      'stop',
+      'chooseDirectory',
+      'chooseCodex',
+      'logs',
+      'openData',
+      'copyDiagnostics',
+      'loginItem',
+    ]),
+  }),
+  z.strictObject({
+    method: z.literal('saveDraft'),
+    settings: desktopSettingsSchema,
+    secret: z.string().max(256),
+  }),
+  z.strictObject({
+    method: z.literal('apply'),
+    settings: desktopSettingsSchema,
+    secret: z.string().max(256),
+  }),
+  z.strictObject({
+    method: z.literal('checkFeishu'),
+    settings: desktopSettingsSchema,
+    secret: z.string().max(256),
+  }),
+  z.strictObject({ method: z.literal('checkCodex'), binary: text }),
+  z.strictObject({ method: z.literal('discoverProjects'), knownRoots: z.array(text).max(600) }),
+  z.strictObject({ method: z.literal('setLoginItem'), enabled: z.boolean() }),
+]);
+export type UiRequest = z.infer<typeof uiRequestSchema>;
