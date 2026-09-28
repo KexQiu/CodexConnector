@@ -1,9 +1,10 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { nodeEnvironment } from './node-runtime.mjs';
 const root = dirname(import.meta.dirname);
 const require = createRequire(join(root, 'apps/desktop/package.json'));
 const electron = dirname(require.resolve('electron/package.json'));
@@ -61,7 +62,17 @@ for (const [directory, binary] of [
   [alias, 'volume.node'],
   [dirname(appDmg.resolve('fs-xattr/package.json')), 'xattr.node'],
 ]) {
-  if (!existsSync(join(directory, 'build/Release', binary))) {
+  const loadable = () =>
+    spawnSync(
+      process.execPath,
+      ['-e', 'require(process.argv[1])', join(directory, 'build/Release', binary)],
+      {
+        env: nodeEnvironment(process.execPath),
+        timeout: 10_000,
+        stdio: 'pipe',
+      },
+    ).status === 0;
+  if (!loadable()) {
     const nodeRoot = dirname(dirname(process.execPath));
     execFileSync(
       process.execPath,
@@ -72,7 +83,8 @@ for (const [directory, binary] of [
         directory,
         ...(existsSync(join(nodeRoot, 'include/node/node.h')) ? ['--nodedir', nodeRoot] : []),
       ],
-      { stdio: 'inherit' },
+      { stdio: 'inherit', env: nodeEnvironment(process.execPath) },
     );
+    if (!loadable()) throw new Error(`DMG 构建模块 ${binary} 无法在当前 Node 下加载`);
   }
 }

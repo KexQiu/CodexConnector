@@ -1,8 +1,13 @@
 import { z } from 'zod';
 import {
+  remoteProjectCreationSchema,
+  defaultRemoteProjectCreation,
+} from '../config/remote-projects.js';
+import {
   hasOneProjectPolicy,
   maxConcurrentTasksSchema,
   projectAccessFields,
+  type RemotePermissions,
 } from '../config/project-policy.js';
 
 const text = z.string().max(4096);
@@ -10,6 +15,7 @@ export const desktopSettingsSchema = z.strictObject({
   codexBinary: text,
   feishu: z.strictObject({ appId: text, tenantKey: text, allowedOpenId: text, testChatId: text }),
   maxConcurrentTasks: maxConcurrentTasksSchema,
+  remoteProjectCreation: remoteProjectCreationSchema.default(defaultRemoteProjectCreation),
   hiddenProjectRoots: z.array(text).max(500).default([]),
   projects: z
     .array(
@@ -37,6 +43,7 @@ export const stoppedStatus = (): DesktopStatus => ({
   tasks: [],
 });
 export type DesktopSnapshot = {
+  codexPathNotice?: string;
   settings: DesktopSettings;
   activeSettings: DesktopSettings | null;
   hasDraft: boolean;
@@ -46,7 +53,7 @@ export type DesktopSnapshot = {
   dataDir: string;
   status: DesktopStatus;
 };
-export type CheckResult = { ok: boolean; message: string };
+export type CheckResult = { ok: boolean; message: string; binary?: string };
 export type LoginItemState = {
   supported: boolean;
   canEnable: boolean;
@@ -56,11 +63,17 @@ export type LoginItemState = {
   requested: boolean;
   message: string;
 };
-export type DiscoveredProject = { key: string; name: string; root: string };
+export type DiscoveredProject = {
+  key: string;
+  name: string;
+  root: string;
+  remotePermissions?: RemotePermissions;
+};
 export type ProjectDiscovery = {
   projects: DiscoveredProject[];
   canonicalRoots: Record<string, string>;
   unavailable: number;
+  warning?: string;
 };
 export type DesktopApi = {
   load(): Promise<DesktopSnapshot>;
@@ -72,7 +85,10 @@ export type DesktopApi = {
   stop(): Promise<DesktopStatus>;
   chooseDirectory(): Promise<string | null>;
   chooseCodex(): Promise<string | null>;
-  discoverProjects(knownRoots: string[]): Promise<ProjectDiscovery>;
+  discoverProjects(
+    knownRoots: string[],
+    feishu: DesktopSettings['feishu'],
+  ): Promise<ProjectDiscovery>;
   logs(): Promise<string[]>;
   openData(): Promise<void>;
   copyDiagnostics(): Promise<void>;
@@ -113,7 +129,11 @@ export const uiRequestSchema = z.discriminatedUnion('method', [
     secret: z.string().max(256),
   }),
   z.strictObject({ method: z.literal('checkCodex'), binary: text }),
-  z.strictObject({ method: z.literal('discoverProjects'), knownRoots: z.array(text).max(600) }),
+  z.strictObject({
+    method: z.literal('discoverProjects'),
+    knownRoots: z.array(text).max(600),
+    feishu: desktopSettingsSchema.shape.feishu,
+  }),
   z.strictObject({ method: z.literal('setLoginItem'), enabled: z.boolean() }),
 ]);
 export type UiRequest = z.infer<typeof uiRequestSchema>;

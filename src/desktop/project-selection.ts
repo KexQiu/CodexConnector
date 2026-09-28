@@ -7,7 +7,14 @@ export function appendProject(projects: DesktopSettings['projects'], project: Di
   while (keys.has(key)) key = `${project.key}-${suffix++}`;
   return [
     ...projects,
-    { ...project, key, remotePermissions: { mode: 'disabled' as const, networkAccess: false } },
+    {
+      ...project,
+      key,
+      remotePermissions: project.remotePermissions ?? {
+        mode: 'disabled' as const,
+        networkAccess: false,
+      },
+    },
   ];
 }
 

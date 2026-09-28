@@ -5,10 +5,73 @@ import { basename, isAbsolute, join } from 'node:path';
 import Database from 'better-sqlite3';
 import { z } from 'zod';
 import { canonicalDirectory } from '../projects/store.js';
-import type { DiscoveredProject, ProjectDiscovery } from './contracts.js';
+import type { DesktopSettings, DiscoveredProject, ProjectDiscovery } from './contracts.js';
+import { registeredProjects } from '../projects/remote.js';
+import { ownerKey } from '../tasks/store.js';
 
 const rootSchema = z.string().max(4096).refine(isAbsolute);
 const rowsSchema = z.array(z.object({ name: z.string().max(4096), root: rootSchema })).max(500);
+export function discoverProfileProjects(
+  input: { knownRoots: string[]; dataDir: string; feishu: DesktopSettings['feishu'] },
+  home?: string,
+): ProjectDiscovery {
+  let discovery: ProjectDiscovery;
+  try {
+    discovery = discoverProjects(input.knownRoots, home);
+  } catch {
+    discovery = {
+      projects: [],
+      canonicalRoots: {},
+      unavailable: 0,
+      warning: 'Codex 项目暂不可读，已保留当前列表并读取远程项目。',
+    };
+  }
+  const path = join(input.dataDir, 'gateway.sqlite');
+  if (!existsSync(path)) return discovery;
+  const db = new Database(path, { readonly: true, fileMustExist: true, timeout: 250 });
+  try {
+    const owner = ownerKey({
+      appId: input.feishu.appId,
+      tenantKey: input.feishu.tenantKey,
+      openId: input.feishu.allowedOpenId,
+    });
+    const remote = registeredProjects(db, owner, input.feishu.testChatId).map(
+      ({ key, name, root, remotePermissions }) => ({
+        key,
+        name,
+        root,
+        ...(remotePermissions ? { remotePermissions } : {}),
+      }),
+    );
+    if (db.prepare("SELECT 1 FROM sqlite_schema WHERE name='remote_projects'").get()) {
+      const pending = Number(
+        db
+          .prepare(
+            "SELECT count(*) FROM remote_projects WHERE owner_key=? AND chat_id=? AND state='creating'",
+          )
+          .pluck()
+          .get(owner, input.feishu.testChatId),
+      );
+      if (pending)
+        discovery.warning = [
+          discovery.warning,
+          `${pending} 个项目创建结果待核对，请检查保存目录后手动添加；系统不会覆盖或删除目录。`,
+        ]
+          .filter(Boolean)
+          .join(' ');
+    }
+    // Prefer the durable gateway key and locally granted policy over a Codex discovery alias.
+    return {
+      ...discovery,
+      projects: [
+        ...remote,
+        ...discovery.projects.filter((p) => !remote.some((r) => r.root === p.root)),
+      ],
+    };
+  } finally {
+    db.close();
+  }
+}
 function projectRows(home: string): { name: string; root: string }[] {
   // Versioned, read-only adapter for the verified Codex baseline. Never open thread
   // tables, migrate this database, or start another Codex/Feishu connection.

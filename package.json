@@ -6,11 +6,13 @@
   "description": "Personal macOS Codex gateway for Feishu",
   "packageManager": "pnpm@11.20.0",
   "engines": {
-    "node": ">=24.15.0 <25",
+    "node": "^22.14.0 || ^24.0.0",
     "pnpm": "11.20.0"
   },
   "scripts": {
     "desktop:setup": "node scripts/desktop-electron.mjs",
+    "runtime:setup": "node scripts/node-runtime.mjs",
+    "test:node-matrix": "node scripts/test-node-matrix.mjs",
     "desktop:build": "node scripts/desktop-build.mjs",
     "desktop:dev": "pnpm desktop:build && pnpm --filter @codexconnector/desktop start",
     "desktop:make": "pnpm desktop:build && pnpm --filter @codexconnector/desktop make",
@@ -39,7 +41,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "node scripts/build.mjs",
-    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm build"
+    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test && pnpm build",
+    "protocol:compatibility": "node --import tsx scripts/check-codex-compatibility.mjs",
+    "protocol:profile": "node --import tsx scripts/compatibility-profile.mjs"
   },
   "dependencies": {
     "@larksuiteoapi/node-sdk": "1.74.0",
@@ -51,7 +55,7 @@
   "devDependencies": {
     "@eslint/js": "10.0.1",
     "@types/better-sqlite3": "9.6.0",
-    "@types/node": "24.13.4",
+    "@types/node": "22.20.2",
     "@types/ws": "8.18.1",
     "eslint": "10.10.0",
     "prettier": "3.9.6",

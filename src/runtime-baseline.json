@@ -1,6 +1,8 @@
 {
   "milestone": "M4",
   "node": "24.15.0",
+  "nodeSupported": "^22.14.0 || ^24.0.0",
+  "nodeApiMinimum": 10,
   "pnpm": "11.20.0",
   "codex": "0.155.0-alpha.9.2",
   "codexBinary": "/Applications/ChatGPT.app/Contents/Resources/codex",

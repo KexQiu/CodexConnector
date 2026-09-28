@@ -8,6 +8,8 @@ import type {
   LoginItemState,
 } from '../../../src/desktop/contracts.js';
 import './style.css';
+import { FeedbackViewport, type FeedbackNotice } from './feedback.js';
+import { SelectField, TextInput, type SelectOption } from './form-controls.js';
 import { DesktopDraftCache, type DraftCacheState } from '../../../src/desktop/draft-cache.js';
 import { appendProject, mergeDiscoveredProjects } from '../../../src/desktop/project-selection.js';
 import {
@@ -47,6 +49,15 @@ const taskLabels: Record<string, string> = {
   failed: '失败',
   interrupted: '已中断',
 };
+const permissionOptions: SelectOption[] = [
+  { value: 'disabled', label: '禁止远程执行', description: '保留项目，不接受飞书发起的任务' },
+  { value: 'read-only', label: '只读分析', description: '允许分析代码，不允许修改文件' },
+  {
+    value: 'workspace-write',
+    label: '允许修改项目文件',
+    description: '允许在授权的项目范围内写入',
+  },
+];
 function Icon({ name }: { name: string }) {
   const paths: Record<string, string> = {
     overview: 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',
@@ -87,23 +98,25 @@ function App() {
   const [page, setPage] = useState<Page>('overview');
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState('');
-  const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
+  const [notice, setNotice] = useState<FeedbackNotice | null>(null);
+  const dismissNotice = useCallback(() => setNotice(null), []);
   const [logs, setLogs] = useState<string[]>([]);
   const [loginState, setLoginState] = useState<LoginItemState | null>(null);
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
   const loginPending = useRef(false);
+  const lastLoginError = useRef('');
   const settingsRef = useRef<DesktopSettings | null>(null);
   const editorRevision = useRef(0);
   const mounted = useRef(false);
   const refreshing = useRef(false);
+  const lastProjectError = useRef('');
   const [projectStatus, setProjectStatus] = useState({ loading: false, error: false, text: '' });
   const [feishuCheck, setFeishuCheck] = useState<{
     phase: 'checking' | 'success' | 'error';
     text: string;
   } | null>(null);
   const checkRevision = useRef(0);
-  const checkResultRef = useRef<HTMLDivElement>(null);
   const api = window.desktop;
   useEffect(() => {
     if (!api) {
@@ -168,20 +181,42 @@ function App() {
   useEffect(() => {
     if (api && page === 'logs') return api.onLogs(setLogs);
   }, [api, page]);
-  const refreshLoginItem = useCallback(async () => {
-    if (!api || loginPending.current) return;
-    loginPending.current = true;
-    setLoginLoading(true);
-    setLoginError('');
-    try {
-      setLoginState(await api.loginItem());
-    } catch {
-      setLoginError('暂时无法读取自启状态，请重试。');
-    } finally {
-      loginPending.current = false;
-      setLoginLoading(false);
-    }
-  }, [api]);
+  const runtimeError = snapshot?.status.error;
+  useEffect(() => {
+    if (runtimeError) setNotice({ text: runtimeError, error: true, source: 'runtime' });
+    else setNotice((current) => (current?.source === 'runtime' ? null : current));
+  }, [runtimeError]);
+  const refreshLoginItem = useCallback(
+    async (manual = false) => {
+      if (!api || loginPending.current) return;
+      loginPending.current = true;
+      setLoginLoading(true);
+      setLoginError('');
+      try {
+        const value = await api.loginItem();
+        setLoginState(value);
+        if (value.status === 'error') throw new Error(value.message);
+        lastLoginError.current = '';
+        if (manual) setNotice({ text: value.message, error: false, source: 'login' });
+        else
+          setNotice((current) => (current?.source === 'login' && current.error ? null : current));
+      } catch (error) {
+        const text = error instanceof Error ? error.message : '暂时无法读取自启状态，请重试。';
+        setLoginError(text);
+        if (manual || text !== lastLoginError.current)
+          setNotice((current) =>
+            manual
+              ? { text, error: true, source: 'login' }
+              : (current ?? { text, error: true, source: 'login' }),
+          );
+        lastLoginError.current = text;
+      } finally {
+        loginPending.current = false;
+        setLoginLoading(false);
+      }
+    },
+    [api],
+  );
   useEffect(() => {
     if (page !== 'preferences') return;
     const refresh = () => {
@@ -196,10 +231,18 @@ function App() {
     loginPending.current = true;
     setLoginLoading(true);
     setLoginError('');
+    setNotice(null);
     try {
-      setLoginState(await api.setLoginItem(enabled));
+      const value = await api.setLoginItem(enabled);
+      setLoginState(value);
+      if (value.status === 'error') throw new Error(value.message);
+      lastLoginError.current = '';
+      setNotice({ text: value.message, error: false, source: 'login' });
     } catch (error) {
-      setLoginError(error instanceof Error ? error.message : '修改自启状态失败，请重试。');
+      const text = error instanceof Error ? error.message : '修改自启状态失败，请重试。';
+      setLoginError(text);
+      lastLoginError.current = text;
+      setNotice({ text, error: true, source: 'login' });
       try {
         setLoginState(await api.loginItem());
       } catch {
@@ -230,39 +273,66 @@ function App() {
       cache.current?.update(next, secretRef.current) ?? editorRevision.current;
     setDirty(true);
   }
-  const refreshProjects = useCallback(async () => {
-    const current = settingsRef.current;
-    if (!api || !current || refreshing.current || closingRef.current) return;
-    refreshing.current = true;
-    setProjectStatus({ loading: true, error: false, text: '正在读取本机 Codex 项目…' });
-    try {
-      const discovery = await api.discoverProjects([
-        ...current.projects.map((p) => p.root),
-        ...current.hiddenProjectRoots,
-      ]);
-      if (!mounted.current || !settingsRef.current || closingRef.current) return;
-      const latest = settingsRef.current;
-      const next = mergeDiscoveredProjects(latest, discovery);
-      if (next !== latest) update(next);
-      setProjectStatus({
-        loading: false,
-        error: false,
-        text:
-          `已刷新 · 发现 ${discovery.projects.length} 个本机 Codex 项目` +
+  const refreshProjects = useCallback(
+    async (manual = false) => {
+      const current = settingsRef.current;
+      if (!api || !current || refreshing.current || closingRef.current) return;
+      refreshing.current = true;
+      setProjectStatus({ loading: true, error: false, text: '正在读取本机 Codex 项目…' });
+      try {
+        const discovery = await api.discoverProjects(
+          [...current.projects.map((p) => p.root), ...current.hiddenProjectRoots],
+          current.feishu,
+        );
+        if (!mounted.current || !settingsRef.current || closingRef.current) return;
+        const latest = settingsRef.current;
+        if (JSON.stringify(latest.feishu) !== JSON.stringify(current.feishu)) {
+          if (manual)
+            setNotice({
+              text: '飞书身份已变化，请刷新对应项目。',
+              error: false,
+              source: 'projects',
+            });
+          setProjectStatus({
+            loading: false,
+            error: false,
+            text: '飞书身份已变化，请刷新对应项目。',
+          });
+          return;
+        }
+        const next = mergeDiscoveredProjects(latest, discovery);
+        if (next !== latest) update(next);
+        const text =
+          `已刷新 · 发现 ${discovery.projects.length} 个项目（含远程创建）` +
+          (discovery.warning ? ` · ${discovery.warning}` : '') +
           (discovery.unavailable ? ` · ${discovery.unavailable} 个目录暂不可用` : '') +
-          (next.projects.length >= 100 ? ' · 最多保留 100 个项目' : ''),
-      });
-    } catch (error) {
-      if (mounted.current)
-        setProjectStatus({
-          loading: false,
-          error: true,
-          text: error instanceof Error ? error.message : '项目读取失败，请稍后刷新或手动添加。',
-        });
-    } finally {
-      refreshing.current = false;
-    }
-  }, [api]);
+          (next.projects.length >= 100 ? ' · 最多保留 100 个项目' : '');
+        setProjectStatus({ loading: false, error: false, text });
+        lastProjectError.current = '';
+        if (manual) setNotice({ text, error: false, source: 'projects' });
+        else
+          setNotice((current) =>
+            current?.source === 'projects' && current.error ? null : current,
+          );
+      } catch (error) {
+        if (mounted.current) {
+          const text =
+            error instanceof Error ? error.message : '项目读取失败，请稍后刷新或手动添加。';
+          setProjectStatus({ loading: false, error: true, text });
+          if (manual || text !== lastProjectError.current)
+            setNotice((current) =>
+              manual
+                ? { text, error: true, source: 'projects' }
+                : (current ?? { text, error: true, source: 'projects' }),
+            );
+          lastProjectError.current = text;
+        }
+      } finally {
+        refreshing.current = false;
+      }
+    },
+    [api],
+  );
   const loaded = Boolean(settings);
   useEffect(() => {
     if (!loaded) return;
@@ -282,28 +352,29 @@ function App() {
   useEffect(() => {
     if (page === 'projects' || (page === 'setup' && step === 2)) refreshProjects().catch(() => {});
   }, [page, step, refreshProjects]);
-  useEffect(() => {
-    if (feishuCheck) checkResultRef.current?.scrollIntoView({ block: 'nearest' });
-  }, [feishuCheck, page, step]);
   function resetFeishuCheck() {
     checkRevision.current++;
     setFeishuCheck(null);
+    setNotice((current) => (current?.source === 'feishu' ? null : current));
   }
   async function checkConnection() {
     if (!settings || busy) return;
     const revision = ++checkRevision.current;
     setBusy('检查飞书');
+    setNotice(null);
     setFeishuCheck({ phase: 'checking', text: '正在检查凭据与会话历史读取权限…' });
     try {
       const result = await api.checkFeishu(settings, secret);
-      if (revision === checkRevision.current)
+      if (revision === checkRevision.current) {
         setFeishuCheck({ phase: result.ok ? 'success' : 'error', text: result.message });
+        setNotice({ text: result.message, error: !result.ok, source: 'feishu' });
+      }
     } catch (error) {
-      if (revision === checkRevision.current)
-        setFeishuCheck({
-          phase: 'error',
-          text: error instanceof Error ? error.message : '连接检查失败，请重试。',
-        });
+      if (revision === checkRevision.current) {
+        const text = error instanceof Error ? error.message : '连接检查失败，请重试。';
+        setFeishuCheck({ phase: 'error', text });
+        setNotice({ text, error: true, source: 'feishu' });
+      }
     } finally {
       setBusy('');
     }
@@ -335,6 +406,98 @@ function App() {
       {label}
     </button>
   );
+  const startReason = busy
+    ? `正在${busy}，请稍候。`
+    : !stopped
+      ? '连接正在运行或停止中。请先在总览停止连接，再重新启动。'
+      : !snapshot?.configured
+        ? '首次配置尚未应用。请完成连接信息与项目设置，再点击「应用配置」。'
+        : snapshot.hasDraft || dirty
+          ? '有尚未应用的修改。自动缓存只保存填写内容，请先应用配置，再启动连接。'
+          : '';
+  function startButton(primary = true) {
+    return (
+      <button
+        className={primary ? 'button primary' : 'button'}
+        disabled={Boolean(startReason)}
+        title={startReason || undefined}
+        aria-describedby={
+          startReason || !settings?.projects.length ? 'connection-guidance' : undefined
+        }
+        onClick={() => {
+          run('启动服务', async () => {
+            const value = await api.start();
+            setSnapshot((s) => (s ? { ...s, status: value } : s));
+            setPage('overview');
+          }).catch(() => {});
+        }}
+      >
+        {busy === '启动服务' ? '正在启动…' : '启动连接'}
+      </button>
+    );
+  }
+  function connectionHint(inWizard = false) {
+    if (!settings || !snapshot) return null;
+    const noProjects = settings.projects.length === 0;
+    if (!startReason && !noProjects) return null;
+    return (
+      <div id="connection-guidance" className={`connection-hint ${startReason ? 'attention' : ''}`}>
+        <span className="connection-hint-icon" aria-hidden="true">
+          i
+        </span>
+        <div>
+          <strong>
+            {busy ? '操作进行中' : startReason ? '启动前还需一步' : '尚未添加本地项目'}
+          </strong>
+          {startReason && <p>{startReason}</p>}
+          {noProjects && (
+            <p>
+              {settings.remoteProjectCreation.enabled
+                ? '本地项目列表为空。连接后可从飞书新建项目，也可以现在添加本地目录。'
+                : '当前没有本地项目。添加后才能向该项目发起任务；也可先应用连接配置，稍后添加。'}
+            </p>
+          )}
+          <div className="connection-hint-actions">
+            {!busy && startReason && !inWizard && (
+              <button
+                className="text-button"
+                onClick={() => {
+                  setStep(
+                    !snapshot.configured
+                      ? !settings.codexBinary.trim()
+                        ? 0
+                        : Object.values(settings.feishu).some((value) => !value.trim()) ||
+                            (!snapshot.hasSecret && !secret.trim())
+                          ? 1
+                          : noProjects && !settings.remoteProjectCreation.enabled
+                            ? 2
+                            : 3
+                      : 3,
+                  );
+                  setPage('setup');
+                }}
+              >
+                {snapshot.configured ? '检查并应用' : '继续配置'} <Icon name="arrow" />
+              </button>
+            )}
+            {!busy && active && inWizard && (
+              <button className="text-button" onClick={() => setPage('overview')}>
+                前往总览停止连接 <Icon name="arrow" />
+              </button>
+            )}
+            {!busy && noProjects && (
+              <button
+                className="text-button"
+                onClick={() => (inWizard ? setStep(2) : setPage('projects'))}
+              >
+                添加本地项目 <Icon name="arrow" />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
   function codexForm() {
     if (!settings) return null;
     return (
@@ -344,10 +507,13 @@ function App() {
           <h2>连接你的 Codex</h2>
           <p>复用这台 Mac 上的安装和登录状态。</p>
         </div>
-        <label className="field">
-          Codex 可执行文件
+        <div className="field">
+          <label htmlFor="codex-binary">Codex 可执行文件</label>
           <div className="input-action">
-            <input
+            <TextInput
+              id="codex-binary"
+              spellCheck={false}
+              placeholder="选择本机 Codex 可执行文件"
               value={settings.codexBinary}
               onChange={(e) => update({ ...settings, codexBinary: e.target.value })}
             />
@@ -359,14 +525,19 @@ function App() {
               }),
             )}
           </div>
-        </label>
-        <div className="helper">
-          选择应用包内 Contents / Resources / codex。若尚未登录，请先打开 Codex 完成登录。
         </div>
+        <div className="helper">
+          支持自动识别新旧 Codex 安装目录，也可手动选择可执行文件。若尚未登录，请先打开 Codex
+          完成登录。
+        </div>
+        {snapshot?.codexPathNotice && <div className="helper">{snapshot.codexPathNotice}</div>}
         <div className="action-row">
-          {button('检查版本', () =>
+          {button('检查版本与协议', () =>
             run('检查 Codex', async () => {
               const result = await api.checkCodex(settings.codexBinary);
+              if (settingsRef.current?.codexBinary !== settings.codexBinary) return;
+              if (result.binary && result.binary !== settings.codexBinary)
+                update({ ...settingsRef.current, codexBinary: result.binary });
               setNotice({ text: result.message, error: !result.ok });
             }),
           )}
@@ -417,8 +588,10 @@ function App() {
         <div className="form-grid">
           {fields.map((field) => (
             <label className="field" key={field.key}>
-              {field.label}
-              <input
+              <span id={`feishu-${field.key}-label`}>{field.label}</span>
+              <TextInput
+                aria-labelledby={`feishu-${field.key}-label`}
+                aria-describedby={`feishu-${field.key}-hint`}
                 spellCheck={false}
                 placeholder={field.placeholder}
                 value={settings.feishu[field.key]}
@@ -430,12 +603,14 @@ function App() {
                   });
                 }}
               />
-              <small>{field.hint}</small>
+              <small id={`feishu-${field.key}-hint`}>{field.hint}</small>
             </label>
           ))}
           <label className="field full">
-            App Secret{' '}
-            <input
+            <span id="feishu-secret-label">App Secret</span>
+            <TextInput
+              aria-labelledby="feishu-secret-label"
+              aria-describedby="feishu-secret-hint"
               type="password"
               autoComplete="new-password"
               placeholder={
@@ -452,7 +627,7 @@ function App() {
                 setDirty(true);
               }}
             />
-            <small>使用 macOS Keychain 保护，已保存的密钥不会回显。</small>
+            <small id="feishu-secret-hint">使用 macOS Keychain 保护，已保存的密钥不会回显。</small>
           </label>
         </div>
         <div className="inline-note">
@@ -473,12 +648,7 @@ function App() {
           <span className="helper">不会发送测试消息</span>
         </div>
         {feishuCheck && (
-          <div
-            ref={checkResultRef}
-            className={`check-feedback ${feishuCheck.phase}`}
-            role={feishuCheck.phase === 'error' ? 'alert' : 'status'}
-            aria-atomic="true"
-          >
+          <div className={`check-feedback ${feishuCheck.phase}`}>
             <strong>
               {feishuCheck.phase === 'checking'
                 ? '检查中'
@@ -518,12 +688,12 @@ function App() {
           <div>
             <span className="eyebrow">LOCAL WORKSPACES</span>
             <h2>选择可以连接的项目</h2>
-            <p>每个项目单独授权，新增项目默认关闭远程执行。</p>
+            <p>每个项目单独授权；远程创建的项目沿用本机预设权限。</p>
           </div>
           <div className="action-row">
             {button(
               projectStatus.loading ? '刷新中…' : '刷新项目',
-              refreshProjects,
+              () => refreshProjects(true),
               false,
               projectStatus.loading,
             )}
@@ -552,14 +722,11 @@ function App() {
           </div>
         </div>
         <p className="helper">
-          自动读取本机 Codex 的项目目录；回到 App 或每隔 30
-          秒刷新。新增项目需在本机授权并应用后才能执行任务。
+          自动读取本机 Codex 和远程创建的项目；回到 App 或每隔 30 秒刷新。
+          本机添加的项目需授权并应用；远程项目创建成功后即可按预设权限使用。
         </p>
         {projectStatus.text && (
-          <p
-            className={`project-feedback ${projectStatus.error ? 'error' : ''}`}
-            role={projectStatus.error ? 'alert' : 'status'}
-          >
+          <p className={`project-feedback ${projectStatus.error ? 'error' : ''}`}>
             {projectStatus.text}
           </p>
         )}
@@ -578,14 +745,17 @@ function App() {
                   <div className="form-grid">
                     <label className="field">
                       项目名称
-                      <input
+                      <TextInput
+                        placeholder="例如：我的项目"
                         value={project.name}
                         onChange={(e) => changeProject(index, 'name', e.target.value)}
                       />
                     </label>
                     <label className="field">
                       项目标识
-                      <input
+                      <TextInput
+                        spellCheck={false}
+                        placeholder="例如：my-project"
                         value={project.key}
                         onChange={(e) => changeProject(index, 'key', e.target.value)}
                       />
@@ -595,30 +765,31 @@ function App() {
                     {project.root}
                   </p>
                   <div className="project-footer">
-                    <label className="field">
-                      远程任务权限
-                      <select
-                        value={
-                          project.remotePermissions?.mode ??
-                          (project.remoteWrite ? 'legacy' : 'disabled')
-                        }
-                        onChange={(e) =>
-                          changePermissions(index, {
-                            ...projectPermissions(project),
-                            mode: e.target.value as RemotePermissions['mode'],
-                          })
-                        }
-                      >
-                        {project.remoteWrite && !project.remotePermissions && (
-                          <option value="legacy" disabled>
-                            旧版：允许执行，按需审批
-                          </option>
-                        )}
-                        <option value="disabled">禁止远程执行</option>
-                        <option value="read-only">只读分析</option>
-                        <option value="workspace-write">允许修改项目文件</option>
-                      </select>
-                    </label>
+                    <SelectField
+                      label="远程任务权限"
+                      value={
+                        project.remotePermissions?.mode ??
+                        (project.remoteWrite ? 'legacy' : 'disabled')
+                      }
+                      onChange={(mode) =>
+                        changePermissions(index, {
+                          ...projectPermissions(project),
+                          mode: mode as RemotePermissions['mode'],
+                        })
+                      }
+                      options={
+                        project.remoteWrite && !project.remotePermissions
+                          ? [
+                              {
+                                value: 'legacy',
+                                label: '旧版：允许执行，按需审批',
+                                disabled: true,
+                              },
+                              ...permissionOptions,
+                            ]
+                          : permissionOptions
+                      }
+                    />
                     <label className="toggle-label">
                       <input
                         type="checkbox"
@@ -669,19 +840,113 @@ function App() {
             ))}
           </div>
         )}
-        <label className="field concurrency-field">
-          最多同时执行
-          <select
-            value={settings.maxConcurrentTasks}
-            onChange={(e) => update({ ...settings, maxConcurrentTasks: Number(e.target.value) })}
-          >
-            {Array.from({ length: 8 }, (_, i) => (
-              <option key={i + 1} value={i + 1}>
-                {i + 1} 个任务
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="remote-creation">
+          <div className="section-heading">
+            <span className="eyebrow">REMOTE PROJECTS</span>
+            <h2>远程新建项目</h2>
+            <p>在飞书点击「新建项目」后回复名称，或发送 /新建项目 项目名称。</p>
+          </div>
+          <label className="toggle-label">
+            <input
+              type="checkbox"
+              checked={settings.remoteProjectCreation.enabled}
+              onChange={(e) =>
+                update({
+                  ...settings,
+                  remoteProjectCreation: {
+                    ...settings.remoteProjectCreation,
+                    enabled: e.target.checked,
+                  },
+                })
+              }
+            />
+            <span className="toggle" />
+            <span>允许飞书创建项目</span>
+          </label>
+          {settings.remoteProjectCreation.enabled && (
+            <>
+              <div className="action-row">
+                {button('选择保存目录', () =>
+                  run('选择远程项目目录', async () => {
+                    const root = await api.chooseDirectory();
+                    const latest = settingsRef.current;
+                    if (root && latest)
+                      update({
+                        ...latest,
+                        remoteProjectCreation: { ...latest.remoteProjectCreation, root },
+                      });
+                  }),
+                )}
+                <span className="path">
+                  {settings.remoteProjectCreation.root ||
+                    '请选择独立目录，例如 ~/Code/RemoteProjects'}
+                </span>
+              </div>
+              <div className="form-grid">
+                <SelectField
+                  label="新项目默认权限"
+                  value={settings.remoteProjectCreation.permissions.mode}
+                  onChange={(mode) =>
+                    update({
+                      ...settings,
+                      remoteProjectCreation: {
+                        ...settings.remoteProjectCreation,
+                        permissions: {
+                          ...settings.remoteProjectCreation.permissions,
+                          mode: mode as RemotePermissions['mode'],
+                        },
+                      },
+                    })
+                  }
+                  options={permissionOptions.map((option) =>
+                    option.value === 'disabled'
+                      ? {
+                          ...option,
+                          label: '仅创建目录，暂不执行任务',
+                          description: '创建空目录，之后可在本机调整权限',
+                        }
+                      : option,
+                  )}
+                />
+                <label className="toggle-label">
+                  <input
+                    type="checkbox"
+                    disabled={settings.remoteProjectCreation.permissions.mode === 'disabled'}
+                    checked={settings.remoteProjectCreation.permissions.networkAccess}
+                    onChange={(e) =>
+                      update({
+                        ...settings,
+                        remoteProjectCreation: {
+                          ...settings.remoteProjectCreation,
+                          permissions: {
+                            ...settings.remoteProjectCreation.permissions,
+                            networkAccess: e.target.checked,
+                          },
+                        },
+                      })
+                    }
+                  />
+                  <span className="toggle" />
+                  <span>允许新项目任务联网</span>
+                </label>
+              </div>
+            </>
+          )}
+          <p className="helper">
+            停止服务后应用设置。仅在指定目录下创建空文件夹，不覆盖已有目录。
+            默认权限只作用于之后创建的项目；已有项目请在上方单独修改。关闭此开关不会删除已有项目。
+          </p>
+        </div>
+        <SelectField
+          label="最多同时执行"
+          className="concurrency-field"
+          value={String(settings.maxConcurrentTasks)}
+          onChange={(value) => update({ ...settings, maxConcurrentTasks: Number(value) })}
+          options={Array.from({ length: 8 }, (_, i) => ({
+            value: String(i + 1),
+            label: `${i + 1} 个任务`,
+          }))}
+        />
         <div className="inline-note">
           仅在本机修改，停止服务后应用。等待审批、输入和状态待核对的任务仍占名额；同一会话或
           checkout 串行，独立目录可并行。
@@ -745,12 +1010,11 @@ function App() {
           </p>
           <div
             className={`inline-note ${loginError || loginState?.status === 'error' ? 'error' : ''}`}
-            role={loginError ? 'alert' : 'status'}
           >
             {loginError || loginState?.message || '正在读取系统登录项…'}
           </div>
           <div className="action-row">
-            {button('刷新系统状态', refreshLoginItem, false, loginLoading)}
+            {button('刷新系统状态', () => refreshLoginItem(true), false, loginLoading)}
           </div>
           <div className="startup-behavior">
             <h3>打开后显示控制台</h3>
@@ -789,17 +1053,9 @@ function App() {
                       }),
                     false,
                   )
-                : button(
-                    '启动连接',
-                    () =>
-                      run('启动服务', async () => {
-                        const value = await api.start();
-                        setSnapshot((s) => (s ? { ...s, status: value } : s));
-                      }),
-                    true,
-                    !snapshot.configured || snapshot.hasDraft || dirty,
-                  )}
+                : startButton()}
             </div>
+            {!active && connectionHint()}
           </div>
           <div className="connection-art" aria-hidden="true">
             <div className={`orbit ${status.phase === 'ready' ? 'online' : ''}`}>
@@ -862,16 +1118,6 @@ function App() {
             </button>
           </div>
         </section>
-        {!snapshot.configured && (
-          <section className="panel compact">
-            <div className="split">
-              <p>还没有连接配置。完成首次设置后即可开始。</p>
-              <button className="button primary" onClick={() => setPage('setup')}>
-                开始设置
-              </button>
-            </div>
-          </section>
-        )}
       </>
     );
   }
@@ -913,17 +1159,9 @@ function App() {
             </dl>
             <div className="action-row">
               {button('应用配置', () => save(true), true, !stopped)}
-              {button(
-                '启动连接',
-                () =>
-                  run('启动服务', async () => {
-                    await api.start();
-                    setPage('overview');
-                  }),
-                false,
-                !snapshot?.configured || snapshot.hasDraft || dirty,
-              )}
+              {startButton(false)}
             </div>
+            {connectionHint(true)}
           </section>
         )}
         <div className="wizard-bottom">
@@ -948,10 +1186,26 @@ function App() {
     <div
       className="app-shell"
       inert={closing}
-      onBlurCapture={() => {
+      onBlurCapture={(event) => {
+        // A blur-triggered save would remove the retry button before its click
+        // arrives. Feedback controls manage their own save operation.
+        if (
+          event.relatedTarget instanceof Element &&
+          event.relatedTarget.closest('.feedback-viewport')
+        )
+          return;
         cache.current?.flush().catch(() => {});
       }}
     >
+      <FeedbackViewport
+        notice={notice}
+        busy={busy}
+        cacheFailed={cacheState === 'error'}
+        onDismiss={dismissNotice}
+        onRetrySave={() => {
+          save(false).catch(() => {});
+        }}
+      />
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">
@@ -1023,29 +1277,6 @@ function App() {
           </div>
         </header>
         <div className="content">
-          {cacheState === 'error' && (
-            <div className="notice error" role="alert">
-              <span>本地缓存保存失败。请检查 Keychain 授权和数据目录写入权限，再重试保存。</span>
-              {button('重试保存', () => save(false))}
-            </div>
-          )}
-          {notice && (
-            <div
-              className={`notice ${notice.error ? 'error' : ''}`}
-              role={notice.error ? 'alert' : 'status'}
-            >
-              <span>{notice.text}</span>
-              <button aria-label="关闭提示" onClick={() => setNotice(null)}>
-                ×
-              </button>
-            </div>
-          )}
-          {busy && busy !== '检查飞书' && (
-            <div className="busy" role="status">
-              <span />
-              {busy}…
-            </div>
-          )}
           {settings && snapshot ? (
             <>
               {page === 'overview' && overview()}

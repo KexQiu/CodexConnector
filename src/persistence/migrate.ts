@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import type Database from 'better-sqlite3';
 
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 export const migrationSources = () =>
   [
     '001_tasks.sql',
@@ -14,6 +14,7 @@ export const migrationSources = () =>
     '007_project_metrics.sql',
     '008_session_navigation.sql',
     '009_navigation_cards.sql',
+    '010_remote_projects.sql',
   ].map((name, index) => {
     const sql = readFileSync(new URL(`./migrations/${name}`, import.meta.url), 'utf8');
     return { version: index + 1, sql, checksum: createHash('sha256').update(sql).digest('hex') };
@@ -96,6 +97,8 @@ export function migrate(database: Database.Database): void {
         feishu_runtime_lease: 'singleton, token, pid',
         tool_observations: 'thread_id, turn_id, item_id, payload',
         task_controls: 'control_id, task_id, kind, turn_id, state',
+        remote_projects: 'request_id,owner_key,chat_id,project_key,root,state,device,inode',
+        remote_project_prompts: 'owner_key,chat_id,token,expires_at',
       }))
         database.prepare(`SELECT ${columns} FROM ${table} LIMIT 0`).all();
       const violations = database.pragma('foreign_key_check');

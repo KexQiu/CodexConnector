@@ -30,6 +30,7 @@ export function projectPickerCard(
   currentProject: string | undefined,
   draft: { id: string; prompt: string; expiresAt: number } | null,
   discoveryUnavailable: boolean,
+  canCreate = false,
 ) {
   const pages = Math.max(1, Math.ceil(projects.length / PROJECT_PAGE_SIZE));
   if (!Number.isSafeInteger(page) || page < 0 || page >= pages)
@@ -65,7 +66,13 @@ export function projectPickerCard(
     });
   }
   if (!projects.length)
-    layout.sections.push({ title: '暂无项目', text: '请在本机配置项目后重新打开列表。' });
+    layout.sections.push({
+      title: '暂无项目',
+      text:
+        canCreate && !draft
+          ? '点击「新建项目」，回复名称即可创建。'
+          : '请在本机配置项目后重新打开列表。',
+    });
   if (page > 0)
     buttons.push({
       label: '上一页',
@@ -82,6 +89,7 @@ export function projectPickerCard(
       draftId: draft?.id ?? null,
       expiresAt,
     });
+  if (canCreate && !draft) buttons.push({ label: '新建项目', action: 'create_project', expiresAt });
   if (draft)
     buttons.push({ label: '取消这条需求', action: 'cancel_draft', draftId: draft.id, expiresAt });
   return { layout, buttons };
@@ -112,7 +120,7 @@ export function helpCard() {
     },
     {
       title: '更多用法',
-      text: '/项目 — 项目列表\n/选择 项目key — 指定项目\n/会话 项目key [页码] — 指定项目的会话\n/任务 [页码] — 翻看历史任务\n/新建 项目key 内容 — 在指定项目开始任务\n/继续 任务ID 内容 — 继续指定会话\n/回答 审批ID 题号 答案 — 补充问题答案',
+      text: '/项目 — 项目列表\n/选择 项目key — 指定项目\n/会话 项目key [页码] — 指定项目的会话\n/任务 [页码] — 翻看历史任务\n/新建项目 名称 — 创建并选择项目\n/取消创建 — 退出项目名称输入\n/新建 项目key 内容 — 在指定项目开始任务\n/继续 任务ID 内容 — 继续指定会话\n/回答 审批ID 题号 答案 — 补充问题答案',
     },
   ];
   return { layout, buttons };

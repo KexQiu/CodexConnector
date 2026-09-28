@@ -6,7 +6,7 @@ import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { loadConfig, runtimePaths, servicePolicySchema } from '../config/schema.js';
-import { runDoctor } from '../cli/doctor.js';
+import { runDoctor, doctorMessage } from '../cli/doctor.js';
 import { gatewayCredentials } from '../feishu/credentials.js';
 import { TaskError } from '../tasks/types.js';
 import { privateDirectory, readPrivate, servicePaths, writeJson, writePrivate } from './files.js';
@@ -97,11 +97,12 @@ export async function validateManifest(manifest: ServiceManifest) {
     buildHash(manifest.entry) !== manifest.buildHash
   )
     throw new TaskError('配置或构建已变化：先停止服务，重新生成部署清单');
-  if (
-    realpathSync(process.execPath) !== manifest.node ||
-    (await runDoctor(manifest.binary)).status !== 'ok'
-  )
-    throw new TaskError('Node/Codex 运行基线不兼容');
+  if (realpathSync(process.execPath) !== manifest.node)
+    throw new TaskError('Node 路径与部署清单不一致');
+  const doctor = await runDoctor(manifest.binary);
+  if (doctor.status !== 'ok') throw new TaskError(doctorMessage(doctor));
+  if (doctor.codexBinary !== manifest.binary)
+    throw new TaskError('Codex 路径已变化，请重新生成部署清单');
   const config = await loadConfig(manifest.configPath);
   if (
     config.dataDir !== manifest.dataDir ||

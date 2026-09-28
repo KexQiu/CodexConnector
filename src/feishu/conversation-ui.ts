@@ -19,6 +19,8 @@ export const uiActionSchema = z.enum([
   'result',
   'copy_id',
   'tasks',
+  'create_project',
+  'cancel_project',
 ]);
 export const noticeButtonSchema = z.object({
   label: z.string().min(1).max(80),
@@ -34,6 +36,8 @@ export const noticeButtonSchema = z.object({
     'result',
     'copy_id',
     'tasks',
+    'create_project',
+    'cancel_project',
   ]),
   choice: z
     .enum(['refresh', 'new_topic', 'details', 'gateway', 'desktop'])

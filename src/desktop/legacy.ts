@@ -10,7 +10,7 @@ export const legacySettingsSchema = z.strictObject({
   notify: gatewayConfigSchema.shape.notify,
 });
 export type LegacySettings = z.infer<typeof legacySettingsSchema>;
-export function profileId(settings: DesktopSettings) {
+export function profileId(settings: Pick<DesktopSettings, 'feishu'>) {
   return createHash('sha256').update(JSON.stringify(settings.feishu)).digest('hex').slice(0, 24);
 }
 export function legacyConfigFor(settings: DesktopSettings, legacy?: LegacySettings) {

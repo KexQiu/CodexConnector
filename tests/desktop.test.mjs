@@ -1,3 +1,4 @@
+import { defaultRemoteProjectCreation } from '../src/config/remote-projects.ts';
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -82,6 +83,7 @@ describe('desktop configuration and credential boundary', () => {
       ...settings(),
       maxConcurrentTasks: 1,
       hiddenProjectRoots: [],
+      remoteProjectCreation: defaultRemoteProjectCreation(),
     });
     expect(vault.credentials(settings()).appSecret).toBe(secret);
   });
@@ -182,11 +184,16 @@ describe('desktop configuration and credential boundary', () => {
     for (const method of ['previewImport', 'commitImport', 'importPreview', 'importCommit'])
       expect(uiRequestSchema.safeParse({ method, token: 'fixture' }).success).toBe(false);
     expect(
-      uiRequestSchema.safeParse({ method: 'discoverProjects', knownRoots: [dir] }).success,
+      uiRequestSchema.safeParse({ method: 'discoverProjects', knownRoots: [dir], feishu: identity })
+        .success,
     ).toBe(true);
     expect(
-      uiRequestSchema.safeParse({ method: 'discoverProjects', knownRoots: [], home: '/other' })
-        .success,
+      uiRequestSchema.safeParse({
+        method: 'discoverProjects',
+        knownRoots: [],
+        feishu: identity,
+        home: '/other',
+      }).success,
     ).toBe(false);
     expect(uiRequestSchema.safeParse({ method: 'openData', path: '/elsewhere' }).success).toBe(
       false,

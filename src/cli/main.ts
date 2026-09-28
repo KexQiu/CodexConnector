@@ -6,6 +6,7 @@ import { runTaskCli } from './tasks.js';
 import { TaskError } from '../tasks/types.js';
 import { runGatewayCli } from './gateway.js';
 import { runServiceCli } from './service.js';
+import { inspectNode, nodeCompatibilityMessage } from '../node-compatibility.js';
 
 const HELP = `CodexConnector — 本地持久化任务与门禁
 
@@ -70,6 +71,13 @@ export async function runCli(args: string[]): Promise<number> {
       return 0;
     }
     const command = positionals[0];
+    if (command !== 'doctor') {
+      const node = inspectNode();
+      if (!node.ok) {
+        process.stderr.write(`${nodeCompatibilityMessage(node)}\n`);
+        return 1;
+      }
+    }
     if (command?.startsWith('service-')) {
       const path = resolveConfigPath(values.config);
       return await runServiceCli(command, positionals, values, path, await loadConfig(path));

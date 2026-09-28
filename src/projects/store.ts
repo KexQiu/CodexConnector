@@ -44,6 +44,16 @@ export function executableProject(
   if (!project || !canExecuteProject(project))
     throw new TaskError('项目未开放远程执行（remoteWrite / remotePermissions）');
   const cwd = canonicalDirectory(project.root);
+  if (project.directoryIdentity) {
+    const actual = lstatSync(project.root);
+    if (
+      !actual.isDirectory() ||
+      actual.dev !== project.directoryIdentity.dev ||
+      actual.ino !== project.directoryIdentity.ino ||
+      cwd !== project.root
+    )
+      throw new TaskError('远程项目目录已被替换，请在本机核对后重新配置');
+  }
   if (expectedCwd && cwd !== expectedCwd) throw new TaskError('项目目录已改变，拒绝按旧任务执行');
   const aliases = projects.filter((other) => {
     if (other.key === key) return false;

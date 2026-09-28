@@ -23,6 +23,7 @@ import type { GatewayConfig } from '../config/schema.js';
 import type { FeishuCredentials } from '../feishu/credentials.js';
 import { maintain } from './maintenance.js';
 import { ownedChildAlive, stopOwnedChild } from './child.js';
+import { gatewayErrorMessage } from './gateway-error.js';
 
 const isolationSchema = z.object({
   config: z.object({
@@ -204,12 +205,12 @@ export async function runService(
             clearInterval(maintenance);
           }
           if (!stopped) throw new TaskError('Gateway 意外退出');
-        } catch {
+        } catch (error) {
           state.ready = false;
           state.rpcReady = false;
           state.feishuConnected = false;
           state.phase = 'retrying';
-          state.error = 'gateway_unavailable';
+          state.error = gatewayErrorMessage(error);
           publish();
           await wait(Math.min(60_000, 1000 * 2 ** Math.min(attempts++, 6)));
         }

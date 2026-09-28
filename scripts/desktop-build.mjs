@@ -11,15 +11,14 @@ import {
   chmodSync,
 } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
+import { bundledNode, nodeEnvironment } from './node-runtime.mjs';
 
 const root = dirname(import.meta.dirname);
 const baseline = JSON.parse(readFileSync(join(root, 'src/runtime-baseline.json'), 'utf8'));
-if (
-  process.platform !== 'darwin' ||
-  process.arch !== 'arm64' ||
-  process.versions.node !== baseline.node
-)
-  throw new Error(`首版构建需要 macOS arm64 / Node ${baseline.node}`);
+if (process.platform !== 'darwin' || process.arch !== 'arm64')
+  throw new Error('首版构建需要 macOS arm64');
+// Resolve before touching existing output. The developer's Node is not the shipped runtime.
+const runtime = bundledNode();
 const target = join(root, '.artifacts/desktop-runtime');
 rmSync(target, { recursive: true, force: true });
 mkdirSync(target, { recursive: true });
@@ -38,9 +37,9 @@ execFileSync(
 cpSync(join(root, 'src/persistence/migrations'), join(backend, 'persistence/migrations'), {
   recursive: true,
 });
-cpSync(process.execPath, join(target, 'node'));
+cpSync(runtime.binary, join(target, 'node'));
 chmodSync(join(target, 'node'), 0o755);
-cpSync(join(dirname(dirname(process.execPath)), 'LICENSE'), join(target, 'NODE-LICENSE'));
+cpSync(runtime.license, join(target, 'NODE-LICENSE'));
 const licenses = join(target, 'licenses');
 mkdirSync(licenses, { recursive: true });
 for (const name of ['react', 'react-dom'])
@@ -93,16 +92,28 @@ execFileSync(
   [
     '--input-type=module',
     '-e',
-    "import Database from 'better-sqlite3'; const db=new Database(':memory:'); if(db.prepare('SELECT 1').pluck().get()!==1)process.exit(1); db.close();",
+    "import Database from 'better-sqlite3'; const db=new Database(':memory:'); db.exec('CREATE TABLE probe (id INTEGER PRIMARY KEY)'); db.transaction(()=>db.prepare('INSERT INTO probe VALUES (?)').run(1))(); if(db.prepare('SELECT id FROM probe').pluck().get()!==1)process.exit(1); db.close();",
   ],
   { cwd: backend, stdio: 'inherit', env: { PATH: '/usr/bin:/bin', HOME: process.env.HOME } },
 );
 writeFileSync(
   join(target, 'runtime.json'),
-  JSON.stringify({ node: baseline.node, platform: process.platform, arch: process.arch }, null, 2),
+  JSON.stringify(
+    {
+      node: runtime.version,
+      nodeSupported: baseline.nodeSupported,
+      buildNode: process.versions.node,
+      napi: runtime.napi,
+      platform: process.platform,
+      arch: process.arch,
+    },
+    null,
+    2,
+  ),
 );
 execFileSync('pnpm', ['--filter', '@codexconnector/desktop', 'build'], {
   cwd: root,
   stdio: 'inherit',
+  env: nodeEnvironment(process.execPath),
 });
 console.log('桌面产物已生成；现有 dist 未改动。');

@@ -1,5 +1,3 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { lstatSync } from 'node:fs';
 import Database from 'better-sqlite3';
 import * as lark from '@larksuiteoapi/node-sdk';
@@ -8,11 +6,12 @@ import { pino } from 'pino';
 import { runtimePaths } from '../config/schema.js';
 import baseline from '../runtime-baseline.json' with { type: 'json' };
 import { SCHEMA_VERSION, validateMigrationChecksums } from '../persistence/migrate.js';
-
-const exec = promisify(execFile);
+import { inspectCodex } from '../codex/compatibility.js';
+import { inspectNode, nodeCompatibilityMessage } from '../node-compatibility.js';
 
 /** Inspect an existing Gateway DB without opening Codex data or running migrations. */
 export function inspectTaskDatabase(dataDir: string) {
+  if (!inspectNode().ok) return { status: 'incompatible-runtime' };
   const path = runtimePaths(dataDir).database;
   let database: Database.Database | undefined;
   try {
@@ -74,33 +73,29 @@ export function inspectTaskDatabase(dataDir: string) {
 }
 
 /** Local diagnostics only: no RPC, Feishu connection, credentials, or persistent DB. */
-export async function runDoctor(binary = process.env.CODEX_BINARY ?? baseline.codexBinary) {
-  let codexVersion: string | null = null;
-  try {
-    const { stdout } = await exec(binary, ['--version'], { timeout: 5000 });
-    codexVersion = stdout.trim();
-  } catch {
-    // A missing or unavailable binary is a reported failure, not a healthy upstream.
-  }
-  const database = new Database(':memory:');
+export async function runDoctor(binary = process.env.CODEX_BINARY) {
+  const codex = await inspectCodex(binary);
+  const node = inspectNode();
   let sqliteVersion: unknown;
+  let sqliteError: string | undefined;
   try {
-    sqliteVersion = database.prepare('SELECT sqlite_version()').pluck().get();
-  } finally {
-    database.close();
+    // Do not load an unsupported native addon: old Node can abort before JS can catch it.
+    if (!node.ok) sqliteError = 'Node 版本或 Node-API 不兼容，未加载 SQLite';
+    else {
+      const database = new Database(':memory:');
+      try {
+        sqliteVersion = database.prepare('SELECT sqlite_version()').pluck().get();
+      } finally {
+        database.close();
+      }
+    }
+  } catch {
+    sqliteError = 'SQLite 原生模块无法加载或执行，请为当前 Node 和架构重新安装依赖';
   }
   const checks = {
-    node: {
-      expected: baseline.node,
-      actual: process.versions.node,
-      ok: process.versions.node === baseline.node,
-    },
-    codex: {
-      expected: `codex-cli ${baseline.codex}`,
-      actual: codexVersion,
-      ok: codexVersion === `codex-cli ${baseline.codex}`,
-    },
-    sqlite: { version: sqliteVersion, ok: typeof sqliteVersion === 'string' },
+    node,
+    codex,
+    sqlite: { version: sqliteVersion, ok: typeof sqliteVersion === 'string', error: sqliteError },
     sdkImports: {
       ok: [lark.Client, lark.WSClient, lark.EventDispatcher, WebSocket, pino].every(
         (value) => typeof value === 'function',
@@ -113,7 +108,7 @@ export async function runDoctor(binary = process.env.CODEX_BINARY ?? baseline.co
     platform: process.platform,
     architecture: process.arch,
     nodePath: process.execPath,
-    codexBinary: binary,
+    codexBinary: codex.binary,
     checks,
     defaultPaths: runtimePaths(),
     scope: 'local-compatibility-only',
@@ -123,4 +118,12 @@ export async function runDoctor(binary = process.env.CODEX_BINARY ?? baseline.co
       G3: 'not-checked-by-doctor',
     },
   };
+}
+
+export function doctorMessage(result: Awaited<ReturnType<typeof runDoctor>>): string {
+  if (!result.checks.node.ok) return nodeCompatibilityMessage(result.checks.node);
+  if (!result.checks.codex.ok) return result.checks.codex.message;
+  if (!result.checks.sqlite.ok) return result.checks.sqlite.error ?? 'SQLite 运行检查失败';
+  if (!result.checks.sdkImports.ok) return '本地运行依赖不可用，请重新构建或安装 CodexConnector';
+  return result.checks.codex.message;
 }

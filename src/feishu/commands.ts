@@ -3,6 +3,7 @@ import type { GatewayConfig } from '../config/schema.js';
 import type { ProjectStore } from '../projects/store.js';
 import { canExecuteProject, projectPermissionLabel } from '../config/project-policy.js';
 import { canonicalDirectory, executableProject } from '../projects/store.js';
+import { RemoteProjects } from '../projects/remote.js';
 import type { TaskStore } from '../tasks/store.js';
 import { TaskError, type StoredTask } from '../tasks/types.js';
 import { taskFailureDescription } from '../tasks/presentation.js';
@@ -44,6 +45,7 @@ const commandRow = z.object({
 export class FeishuCommands {
   readonly store: TaskStore;
   readonly panel: ContextPanel;
+  private readonly remoteProjects: RemoteProjects;
   constructor(
     private readonly inbox: FeishuInbox,
     private readonly config: GatewayConfig,
@@ -56,6 +58,13 @@ export class FeishuCommands {
     },
   ) {
     this.store = inbox.store;
+    this.remoteProjects = new RemoteProjects(
+      this.store.db,
+      config,
+      inbox.owner,
+      inbox.credentials.testChatId,
+    );
+    this.remoteProjects.restore();
     this.panel = new ContextPanel(this.store, config, inbox.owner, inbox.credentials.testChatId);
   }
   resolveTask(short: string): StoredTask {
@@ -246,6 +255,7 @@ export class FeishuCommands {
       this.context()?.project_key,
       draft && draftId ? { id: draftId, prompt: draft.prompt, expiresAt: draft.expires_at } : null,
       discoveryUnavailable,
+      this.config.remoteProjectCreation?.enabled ?? false,
     );
     // Recheck a pending draft after the asynchronous catalog lookup.
     this.store.db
@@ -336,6 +346,125 @@ export class FeishuCommands {
         db
           .prepare('UPDATE feishu_commands SET task_id=? WHERE command_id=?')
           .run(taskId, command.command_id);
+      const clearProjectPrompt = () =>
+        db
+          .prepare('DELETE FROM remote_project_prompts WHERE owner_key=? AND chat_id=?')
+          .run(this.inbox.owner, this.inbox.credentials.testChatId);
+      if (
+        (payload.kind === 'action' && payload.action === 'cancel_project') ||
+        name === '/取消创建'
+      ) {
+        finish(() => {
+          if (payload.kind === 'action')
+            db.prepare(
+              'DELETE FROM remote_project_prompts WHERE owner_key=? AND chat_id=? AND token=?',
+            ).run(this.inbox.owner, this.inbox.credentials.testChatId, payload.projectKey);
+          else clearProjectPrompt();
+          this.notice(
+            command.command_id,
+            '已退出本次项目创建',
+            '未创建或删除任何目录。可发送 /项目 选择项目。',
+            navigationButtons(),
+          );
+        });
+        return true;
+      }
+      if (
+        (payload.kind === 'action' && payload.action === 'create_project') ||
+        (name === '/新建项目' && !rest)
+      ) {
+        if (!this.config.remoteProjectCreation?.enabled)
+          throw new TaskError(
+            '远程新建项目尚未开启，请在本机 App 的「本地项目 → 远程新建项目」配置并应用',
+          );
+        finish(() => {
+          const expiresAt = Date.now() + 30 * 60_000;
+          db.prepare('INSERT OR REPLACE INTO remote_project_prompts VALUES (?,?,?,?)').run(
+            this.inbox.owner,
+            this.inbox.credentials.testChatId,
+            command.command_id,
+            expiresAt,
+          );
+          this.notice(
+            command.command_id,
+            '新项目叫什么？',
+            '请直接发送项目名称，例如：旅行网站。30 分钟内的下一条普通消息将作为名称，不会执行任务。',
+            [
+              {
+                label: '取消创建',
+                action: 'cancel_project',
+                projectKey: command.command_id,
+                expiresAt,
+              },
+            ],
+            operationCard(
+              '新项目叫什么？',
+              '直接发送名称，例如：旅行网站',
+              'blue',
+              '30 分钟内有效；可点「取消创建」或发送 /取消创建 退出。',
+              [
+                { label: '保存位置', value: this.config.remoteProjectCreation!.root },
+                {
+                  label: '新项目权限',
+                  value: projectPermissionLabel({
+                    remotePermissions: this.config.remoteProjectCreation!.permissions,
+                  }),
+                },
+              ],
+            ),
+          );
+        });
+        return true;
+      }
+      const projectPrompt = z
+        .object({ expires_at: z.number() })
+        .optional()
+        .parse(
+          db
+            .prepare(
+              'SELECT expires_at FROM remote_project_prompts WHERE owner_key=? AND chat_id=?',
+            )
+            .get(this.inbox.owner, this.inbox.credentials.testChatId),
+        );
+      const nameReply =
+        payload.kind === 'message' && !payload.replyTo && !name.startsWith('/') && projectPrompt;
+      if (name === '/新建项目' || nameReply) {
+        if (nameReply && projectPrompt.expires_at <= now) {
+          clearProjectPrompt();
+          throw new TaskError('项目名称输入已过期，这条消息没有执行；请重新发送 /新建项目 名称');
+        }
+        // Persist the chosen meaning before filesystem work; retries must never become model tasks.
+        if (nameReply)
+          db.prepare('UPDATE feishu_commands SET payload=? WHERE command_id=?').run(
+            JSON.stringify({ ...payload, text: `/新建项目 ${payload.text}` }),
+            command.command_id,
+          );
+        const project = this.remoteProjects.create(
+          command.command_id,
+          name === '/新建项目' ? rest : payload.text,
+        );
+        finish(() => {
+          clearProjectPrompt();
+          this.store.setContext(this.inbox.owner, project.key, null);
+          this.panel.request();
+          const next = canExecuteProject(project)
+            ? '已切换到新项目，直接发送需求即可开始。'
+            : '已切换到新项目；请先在本机 App 开放该项目的执行权限，再发送需求。';
+          this.notice(
+            command.command_id,
+            '项目已创建',
+            next,
+            navigationButtons(),
+            operationCard('项目已创建', next, 'green', '创建的是空目录，不会自动启动任务。', [
+              { label: '项目', value: project.name },
+              { label: '项目标识', value: project.key },
+              { label: '目录', value: project.root },
+              { label: '权限', value: projectPermissionLabel(project) },
+            ]),
+          );
+        });
+        return true;
+      }
       if (payload.kind === 'action') {
         if (payload.action === 'tasks') {
           const card = this.taskList(payload.page ?? 0);
@@ -403,6 +532,7 @@ export class FeishuCommands {
           return true;
         }
         if (payload.action === 'projects') {
+          clearProjectPrompt();
           await this.projectPicker(command.command_id, payload.draftId, payload.page ?? 0);
           finish(() => {});
           return true;
@@ -426,6 +556,7 @@ export class FeishuCommands {
         if (payload.action === 'project') {
           await this.interactive?.refreshMetrics?.(undefined, payload.projectKey ?? undefined);
           finish(() => {
+            clearProjectPrompt();
             const projectKey = payload.projectKey ?? '';
             executableProject(this.config.projects, projectKey);
             if (payload.draftId) {
@@ -531,6 +662,7 @@ export class FeishuCommands {
         return true;
       }
       if (name === '/项目') {
+        clearProjectPrompt();
         await this.projectPicker(command.command_id, null);
         finish(() => {});
         return true;
@@ -540,6 +672,7 @@ export class FeishuCommands {
           throw new TaskError('项目不存在，请先发送 /项目');
         await this.interactive?.refreshMetrics?.(undefined, rest);
         finish(() => {
+          clearProjectPrompt();
           this.store.setContext(this.inbox.owner, rest, null);
           this.contextNotice(command.command_id, rest, null);
         });

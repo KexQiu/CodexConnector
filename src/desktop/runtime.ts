@@ -12,6 +12,7 @@ import {
   type FeishuCredentials,
 } from '../feishu/credentials.js';
 import { canonicalDirectory } from '../projects/store.js';
+import { validateCreationRoot } from '../projects/remote.js';
 import { privateDirectory, processAlive } from '../service/files.js';
 import { processGroupAlive } from '../service/child.js';
 import { readHealth, roles, ServiceLeases } from '../service/state.js';
@@ -19,8 +20,9 @@ import { runService } from '../service/runner.js';
 import type { ServiceManifest } from '../service/plan.js';
 import { legacyConfigFor, legacySettingsSchema, type LegacySettings } from './legacy.js';
 import { loaded } from '../cli/service.js';
-import { inspectTaskDatabase, runDoctor } from '../cli/doctor.js';
+import { inspectTaskDatabase, runDoctor, doctorMessage } from '../cli/doctor.js';
 import { CodexRpcClient } from '../codex/rpc-client.js';
+import { prepareDesktopDatabase } from './database.js';
 import {
   desktopSettingsSchema,
   stoppedStatus,
@@ -48,6 +50,7 @@ export function validateSettings(
     if (roots.has(root)) throw new Error('同一目录不能重复添加为多个项目');
     roots.add(root);
   }
+  validateCreationRoot(settings, [process.env.CODEX_HOME ?? join(homedir(), '.codex')]);
   return gatewayConfigSchema.parse({
     ...legacyConfigFor(settings, legacy),
     schemaVersion: 1,
@@ -67,6 +70,8 @@ export function validateSettings(
     },
     projects: settings.projects,
     maxConcurrentTasks: settings.maxConcurrentTasks,
+    remoteProjectCreation: settings.remoteProjectCreation,
+    hiddenProjectRoots: settings.hiddenProjectRoots,
   });
 }
 export class DesktopRuntime {
@@ -128,18 +133,17 @@ export class DesktopRuntime {
     const input = runtimeInputSchema.parse(raw);
     const config = validateSettings(input.settings, input.credentials, input.legacy);
     assertLocalConfigIsProtected(config.projects, [input.dataDir]);
+    validateCreationRoot(config, [input.dataDir]);
     gatewayCredentials(config, input.credentials);
     for (const role of roles)
       if (loaded(role))
         throw new Error('检测到已有开发服务，请先在本机停止原 LaunchAgent，再启动 App 连接');
     const doctor = await runDoctor(input.settings.codexBinary);
     if (this.stopRequested) throw new Error('启动已取消');
-    if (doctor.status !== 'ok')
-      throw new Error(
-        `运行版本不兼容。需要 Node ${doctor.checks.node.expected} / ${doctor.checks.codex.expected}`,
-      );
+    if (doctor.status !== 'ok') throw new Error(doctorMessage(doctor));
+    config.codex.binary = doctor.codexBinary;
     const codexHome = realpathSync(process.env.CODEX_HOME ?? join(homedir(), '.codex'));
-    const binary = realpathSync(input.settings.codexBinary);
+    const binary = realpathSync(doctor.codexBinary);
     privateDirectory(input.dataDir);
     const lockRoot = `/private/tmp/cc-${process.getuid!()}`;
     privateDirectory(lockRoot);
@@ -177,8 +181,10 @@ export class DesktopRuntime {
       plistHashes: { 'app-server': '', gateway: '' },
     };
     const validate = async () => {
-      if ((await runDoctor(manifest.binary)).status !== 'ok')
-        throw new Error('Codex 版本已变化，请重新检查兼容性');
+      const current = await runDoctor(manifest.binary);
+      if (current.status !== 'ok') throw new Error(doctorMessage(current));
+      if (current.codexBinary !== manifest.binary)
+        throw new Error('Codex 安装路径已变化，请停止后重新启动');
       return config;
     };
     const failed = () => {
@@ -186,13 +192,15 @@ export class DesktopRuntime {
       this.phase = 'error';
       return 1;
     };
-    this.appDone = runService(manifest, 'app-server', {
-      desktop: true,
-      signal: this.appAbort.signal,
-      validate,
-      onChild: (pid) => this.lease?.db.child(this.lease.token, pid, true),
-    }).catch(failed);
     try {
+      await prepareDesktopDatabase(input.dataDir, this.appAbort.signal);
+      if (this.stopRequested) throw new Error('启动已取消');
+      this.appDone = runService(manifest, 'app-server', {
+        desktop: true,
+        signal: this.appAbort.signal,
+        validate,
+        onChild: (pid) => this.lease?.db.child(this.lease.token, pid, true),
+      }).catch(failed);
       const deadline = Date.now() + 35_000;
       while (
         !readHealth(input.dataDir, 'app-server').ready &&

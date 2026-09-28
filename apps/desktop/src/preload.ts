@@ -20,7 +20,8 @@ const api: DesktopApi = {
   stop: () => invoke({ method: 'stop' }),
   chooseDirectory: () => invoke({ method: 'chooseDirectory' }),
   chooseCodex: () => invoke({ method: 'chooseCodex' }),
-  discoverProjects: (knownRoots) => invoke({ method: 'discoverProjects', knownRoots }),
+  discoverProjects: (knownRoots, feishu) =>
+    invoke({ method: 'discoverProjects', knownRoots, feishu }),
   logs: () => invoke({ method: 'logs' }),
   openData: () => invoke({ method: 'openData' }),
   copyDiagnostics: () => invoke({ method: 'copyDiagnostics' }),

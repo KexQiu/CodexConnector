@@ -2,12 +2,13 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, safeStorage, shell, Men
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
+import { resolveCodexBinary } from '../../../src/codex/binary.js';
 import { pathToFileURL } from 'node:url';
 import { Backend } from './backend.js';
 import { flushDraftBeforeClose } from './draft-close.js';
 import { LoginItemController } from './login-item.js';
 import { z } from 'zod';
-import { DesktopVault, defaultSettings } from '../../../src/desktop/vault.js';
+import { DesktopVault, defaultSettings, profileId } from '../../../src/desktop/vault.js';
 import {
   uiRequestSchema,
   type DesktopSnapshot,
@@ -36,15 +37,17 @@ function snapshot(): DesktopSnapshot {
   const active = vault.read('active');
   const shown = vault.read('draft') ?? active;
   const defaults = defaultSettings();
-  defaults.codexBinary =
-    [
-      defaults.codexBinary,
-      '/Applications/Codex.app/Contents/Resources/codex',
-      join(homedir(), 'Applications/Codex.app/Contents/Resources/codex'),
-      join(homedir(), 'Applications/ChatGPT.app/Contents/Resources/codex'),
-    ].find(existsSync) ?? defaults.codexBinary;
+  defaults.codexBinary = resolveCodexBinary();
+  const settings = shown?.settings ?? defaults;
+  const binary = resolveCodexBinary(settings.codexBinary);
   return {
-    settings: shown?.settings ?? defaults,
+    settings: { ...settings, codexBinary: binary },
+    ...(binary !== settings.codexBinary
+      ? {
+          codexPathNotice:
+            '检测到 Codex 安装布局更新，已使用同一应用中的新入口。下次应用配置时保存新路径。',
+        }
+      : {}),
     activeSettings: active?.settings ?? null,
     hasDraft: Boolean(vault.read('draft')),
     configured: Boolean(active),
@@ -150,7 +153,11 @@ async function handle(request: UiRequest): Promise<unknown> {
       return path && request.method === 'chooseDirectory' ? canonicalDirectory(path) : path;
     }
     case 'discoverProjects':
-      return backend.request('discoverProjects', request.knownRoots);
+      return backend.request('discoverProjects', {
+        knownRoots: request.knownRoots,
+        dataDir: join(root, 'profiles', profileId({ feishu: request.feishu })),
+        feishu: request.feishu,
+      });
     case 'logs': {
       const active = vault.read('active');
       return active ? backend.request('logs', vault.dataDir(active)) : [];

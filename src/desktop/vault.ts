@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
+import { defaultRemoteProjectCreation } from '../config/remote-projects.js';
 import { privateDirectory, readPrivate, writeJson } from '../service/files.js';
 import { credentialsSchema, type FeishuCredentials } from '../feishu/credentials.js';
 import baseline from '../runtime-baseline.json' with { type: 'json' };
@@ -25,6 +26,7 @@ export function defaultSettings(): DesktopSettings {
     feishu: { appId: '', tenantKey: '', allowedOpenId: '', testChatId: '' },
     projects: [],
     maxConcurrentTasks: 1,
+    remoteProjectCreation: defaultRemoteProjectCreation(),
     hiddenProjectRoots: [],
   };
 }

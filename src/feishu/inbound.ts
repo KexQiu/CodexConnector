@@ -215,6 +215,7 @@ export class FeishuInbox {
           'copy_id',
           'details',
           'select',
+          'create_project',
         ].includes(action.data.action)
           ? `panel-action:${eventId}`
           : `action:${data.action.value.gatewayNonce}`;

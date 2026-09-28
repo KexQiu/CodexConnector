@@ -12,7 +12,8 @@ const fixture = vi.hoisted(() => ({
   delayDoctor: null,
 }));
 vi.mock('../src/cli/service.ts', () => ({ loaded: fixture.loaded }));
-vi.mock('../src/cli/doctor.ts', () => ({
+vi.mock('../src/cli/doctor.ts', async (original) => ({
+  ...(await original()),
   runDoctor: fixture.doctor,
   inspectTaskDatabase: () => ({ statuses: [] }),
 }));
@@ -31,13 +32,15 @@ vi.mock('../src/codex/rpc-client.ts', () => ({
   },
 }));
 import { DesktopRuntime } from '../src/desktop/runtime.ts';
+import { openGatewayDatabase } from '../src/persistence/database.ts';
+import { migrationSources, SCHEMA_VERSION } from '../src/persistence/migrate.ts';
 let root, runtime, oldHome, input;
 beforeEach(() => {
   vi.clearAllMocks();
   fixture.events = [];
   fixture.ready = false;
   fixture.loaded.mockReturnValue(false);
-  fixture.doctor.mockResolvedValue({ status: 'ok' });
+  fixture.doctor.mockResolvedValue({ status: 'ok', codexBinary: process.execPath });
   fixture.readHealth.mockImplementation((_dir, role) => ({
     ready: fixture.ready,
     rpcReady: fixture.ready,
@@ -128,4 +131,45 @@ it('keeps failed cleanup unresolved and permits a later stop once the owned grou
   expect(runtime.status().phase).toBe('error');
   await runtime.stop();
   expect(runtime.status().phase).toBe('stopped');
+});
+
+it('starts the resolved executable while preserving the saved input and data profile', async () => {
+  input.settings.codexBinary = '/Applications/ChatGPT.app/Contents/Resources/codex';
+  await runtime.start(input);
+  expect(fixture.run.mock.calls[0][0].binary).toBe(process.execPath);
+  expect(fixture.run.mock.calls[0][0].dataDir).toBe(input.dataDir);
+  expect(input.settings.codexBinary).toBe('/Applications/ChatGPT.app/Contents/Resources/codex');
+});
+it('reports an incompatible contract before starting either service', async () => {
+  fixture.doctor.mockResolvedValue({
+    status: 'incompatible',
+    checks: { node: { ok: true }, codex: { ok: false, message: '核心协议不兼容：turn/interrupt' } },
+  });
+  await expect(runtime.start(input)).rejects.toThrow('核心协议不兼容：turn/interrupt');
+  expect(fixture.run).not.toHaveBeenCalled();
+});
+
+it('checks upgrades before services start and releases the identity lock when preparation fails', async () => {
+  mkdirSync(input.dataDir, { mode: 0o700 });
+  const db = openGatewayDatabase(join(input.dataDir, 'gateway.sqlite'));
+  try {
+    for (const migration of migrationSources().slice(0, 9)) {
+      db.exec(migration.sql);
+      db.prepare('INSERT INTO schema_migrations VALUES (?,?)').run(
+        migration.version,
+        migration.checksum,
+      );
+      db.pragma(`user_version=${migration.version}`);
+    }
+    db.prepare('INSERT INTO worker_lease VALUES (1,?,?)').run('live-worker', process.pid);
+    await expect(runtime.start(input)).rejects.toThrow('无法确认旧进程已退出');
+    expect(fixture.run).not.toHaveBeenCalled();
+    expect(runtime.status().phase).toBe('stopped');
+    db.prepare('DELETE FROM worker_lease').run();
+    await runtime.start(input);
+    expect(db.pragma('user_version', { simple: true })).toBe(SCHEMA_VERSION);
+    expect(fixture.events).toEqual(['app-server:start', 'gateway:start']);
+  } finally {
+    db.close();
+  }
 });

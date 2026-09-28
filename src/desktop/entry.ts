@@ -3,10 +3,11 @@ import { join, isAbsolute } from 'node:path';
 import { z } from 'zod';
 import { desktopSettingsSchema } from './contracts.js';
 import { DesktopRuntime, runtimeInputSchema, validateSettings } from './runtime.js';
-import { discoverProjects } from './projects.js';
+import { discoverProfileProjects } from './projects.js';
+import { validateCreationRoot } from '../projects/remote.js';
 import { credentialsSchema } from '../feishu/credentials.js';
 import { FeishuApi, FeishuApiError } from '../feishu/api.js';
-import { runDoctor } from '../cli/doctor.js';
+import { runDoctor, doctorMessage } from '../cli/doctor.js';
 import { assertQuietDatabase } from '../cli/service.js';
 import { readPrivate } from '../service/files.js';
 import { legacySettingsSchema } from './legacy.js';
@@ -52,6 +53,7 @@ async function dispatch(method: string, args: unknown): Promise<unknown> {
         applicationRoot,
         ...(input.dataDir ? [input.dataDir] : []),
       ]);
+      validateCreationRoot(config, [applicationRoot, ...(input.dataDir ? [input.dataDir] : [])]);
       if (input.dataDir) assertQuietDatabase({ ...config, dataDir: input.dataDir });
       return { ok: true };
     }
@@ -60,10 +62,8 @@ async function dispatch(method: string, args: unknown): Promise<unknown> {
       const result = await runDoctor(binary);
       return {
         ok: result.status === 'ok',
-        message:
-          result.status === 'ok'
-            ? `${result.checks.codex.actual} · 版本兼容；启动时检查登录`
-            : `需要 ${result.checks.codex.expected}；实际 ${result.checks.codex.actual ?? '未找到'}；Node ${result.checks.node.actual}`,
+        message: doctorMessage(result),
+        binary: result.codexBinary,
       };
     }
     case 'feishuCheck': {
@@ -84,8 +84,14 @@ async function dispatch(method: string, args: unknown): Promise<unknown> {
       };
     }
     case 'discoverProjects':
-      return discoverProjects(
-        z.array(z.string().max(4096).refine(isAbsolute)).max(600).parse(args),
+      return discoverProfileProjects(
+        z
+          .object({
+            knownRoots: z.array(z.string().max(4096).refine(isAbsolute)).max(600),
+            dataDir: z.string().refine(isAbsolute),
+            feishu: desktopSettingsSchema.shape.feishu,
+          })
+          .parse(args),
       );
     case 'logs': {
       const dir = join(z.string().refine(isAbsolute).parse(args), 'logs');

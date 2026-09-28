@@ -4,6 +4,8 @@
 
 macOS 桌面 App 首版代码已加入：通过界面配置飞书、管理本地项目并启停连接，配置自动缓存，并支持在安装版中设置登录 Mac 后自启。安装、构建和待完成的真实验收见 [桌面 App 使用说明](./docs/DESKTOP_APP.md)。桌面构建与当前常驻服务产物隔离，开发完成不代表现有部署已切换。
 
+支持在本机授权后，从飞书新建项目：发送 `/新建项目 名称`，或在项目卡点击“新建项目”后回复名称。创建位置和默认权限由 App 控制。操作见 [远程创建说明](./docs/DESKTOP_APP.md#从飞书新建项目)，测试范围见 [验收记录](./docs/gates/remote-projects.md)。
+
 M0 至 M4 阶段功能已验收。M4 审批、输入、控制和恢复：158 项本地测试通过，真实补充/重连/打断、手机命令允许/取消、逐题回答/取消、权限子集/取消、文件允许/取消、退出后恢复及写锁检查通过；手机补充和打断已分别通过，更新超时后的独立终态通知兜底也已真实验证；桌面人工交接联合验收通过，原历史保持不变、没有新增执行。阶段证据分别见 [M3 报告](./docs/gates/M3-gateway.md) 和 [M4 报告](./docs/gates/M4-interactions.md)。M5 常驻服务已安装，生命周期及飞书收发验证通过，正在人工值守试运行，操作见 [M5 部署说明](./docs/gates/M5-deployment.md)；G1 平台自动重投待补测，完整可靠性门禁尚未完成。
 
 ## 文档入口
@@ -34,13 +36,13 @@ M0 至 M4 阶段功能已验收。M4 审批、输入、控制和恢复：158 项
 
 ## 首期技术栈
 
-Node.js 24、TypeScript 6.0.x、pnpm、飞书官方 Node SDK、Codex App Server、ws、SQLite/better-sqlite3、Zod、Pino、Vitest、ESLint/Prettier、macOS launchd。
+Node.js 22.14+（22.x）/ 24.x、TypeScript 6.0.x、pnpm、飞书官方 Node SDK、Codex App Server、ws、SQLite/better-sqlite3、Zod、Pino、Vitest、ESLint/Prettier、macOS launchd。
 
 Gateway 后端保留在根包，桌面控制台位于 `apps/desktop` workspace，两种入口均连接独立 App Server。项目写入受白名单和执行锁控制，消息与任务状态保存在本机 SQLite。
 
 ## 环境与安装
 
-本机组合：Node.js 24.15.0、pnpm 11.20.0、Codex `0.155.0-alpha.9.2`；macOS arm64。9 月 20 日发现应用自动更新后，已审核协议差异、重新生成类型，通过隔离 RPC 及 M4 真实控制回归；旧 M3 报告仍对应 `0.154.0-alpha.6.2`，新版本完整覆盖见 M4 报告。默认使用 `/Applications/ChatGPT.app/Contents/Resources/codex`，可以通过 `CODEX_BINARY` 指定同版本二进制；版本漂移会阻止探针继续。依赖精确版本见 package.json 和 pnpm-lock.yaml，运行基线见 src/runtime-baseline.json。
+源码支持 Node `^22.14.0 || ^24.0.0`、pnpm 11.20.0，macOS arm64；App 内置 Node 仍固定为 24.15.0，详见 [Node 兼容与回归](./docs/NODE_COMPATIBILITY.md)。生成类型仍固定在 Codex `0.155.0-alpha.9.2`；运行时检查所选二进制实际导出的核心协议，不再要求版本号完全相等。旧基线与 `0.158.0-alpha.2.1` 的协议快照均通过；新版的完整真实联调仍待验收。兼容的新增接口/普通字段可自动通过，权限和任务契约变化会阻止启动并列出差异。支持自动识别新旧应用包入口，或使用 `CODEX_BINARY` 指定程序。详见 [Codex 多版本兼容策略](./docs/CODEX_COMPATIBILITY.md)。独立验收探针仍显式固定测试版本，避免混淆不同版本的证据。
 
 在项目根目录执行：
 
@@ -52,7 +54,7 @@ pnpm run doctor
 
 依赖缓存保存在被忽略的 `.pnpm-store/`，安装脚本默认关闭，当前组合已经验证可以直接使用发行包。依赖与 lockfile 不一致时，运行脚本会提示先安装，不再隐式联网安装。
 
-`doctor` 是 pnpm 的内置命令名，必须使用 `pnpm run doctor` 才能运行本项目诊断。默认只检查本机版本和依赖；加 `--config /absolute/config.json` 时只读检查已有任务数据库，未初始化会明确标记，不执行迁移。不连接 RPC/飞书、不读取凭据、不创建运行目录。
+`doctor` 是 pnpm 的内置命令名，必须使用 `pnpm run doctor` 才能运行本项目诊断。默认检查本机版本、依赖和隔离导出的协议；加 `--config /absolute/config.json` 时只读检查已有任务数据库，未初始化会明确标记，不执行迁移。不连接 RPC/飞书、不读取凭据；仅创建并清理协议检查的临时目录，不创建网关运行目录。
 
 ## 已实现的开发入口
 

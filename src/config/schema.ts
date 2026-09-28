@@ -3,6 +3,8 @@ import { homedir } from 'node:os';
 import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import { assertLocalConfigIsProtected } from './local-boundary.js';
+import { remoteProjectCreationSchema } from './remote-projects.js';
+import { validateCreationRoot } from '../projects/remote.js';
 import {
   hasOneProjectPolicy,
   maxConcurrentTasksSchema,
@@ -67,6 +69,8 @@ export const gatewayConfigSchema = z.strictObject({
       '必须指定文件凭据或桌面安全存储，不能同时指定',
     ),
   maxConcurrentTasks: maxConcurrentTasksSchema,
+  remoteProjectCreation: remoteProjectCreationSchema.optional(),
+  hiddenProjectRoots: z.array(absolutePath).max(500).optional(),
   service: servicePolicySchema.optional(),
   notify: z
     .strictObject({
@@ -85,6 +89,7 @@ export const gatewayConfigSchema = z.strictObject({
           key: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/),
           name: identifier,
           root: absolutePath,
+          directoryIdentity: z.object({ dev: z.number(), ino: z.number() }).optional(),
           ...projectAccessFields,
         })
         .refine(hasOneProjectPolicy, '必须且只能指定 remotePermissions 或旧版 remoteWrite'),
@@ -142,6 +147,12 @@ export async function loadConfig(path: string): Promise<GatewayConfig> {
   assertLocalConfigIsProtected(result.data.projects, [
     path,
     result.data.dataDir,
+    ...(result.data.feishu.credentialsFile ? [result.data.feishu.credentialsFile] : []),
+  ]);
+  validateCreationRoot(result.data, [
+    path,
+    result.data.dataDir,
+    process.env.CODEX_HOME ?? join(homedir(), '.codex'),
     ...(result.data.feishu.credentialsFile ? [result.data.feishu.credentialsFile] : []),
   ]);
   return result.data;

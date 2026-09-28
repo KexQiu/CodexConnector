@@ -1,3 +1,4 @@
+import { defaultRemoteProjectCreation } from '../src/config/remote-projects.ts';
 import { assertLocalConfigIsProtected } from '../src/config/local-boundary.ts';
 import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -152,7 +153,11 @@ describe('local project permissions', () => {
       decrypt: (s) => Buffer.from(s, 'base64').toString(),
     });
     vault.write('active', vault.prepare(settings, 'secret'));
-    expect(vault.read('active').settings).toEqual({ ...settings, hiddenProjectRoots: [] });
+    expect(vault.read('active').settings).toEqual({
+      ...settings,
+      hiddenProjectRoots: [],
+      remoteProjectCreation: defaultRemoteProjectCreation(),
+    });
     expect(validateSettings(settings, { ...settings.feishu, appSecret: 'secret' })).toMatchObject({
       maxConcurrentTasks: 3,
       projects: [project()],

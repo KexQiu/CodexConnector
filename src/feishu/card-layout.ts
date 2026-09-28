@@ -97,7 +97,8 @@ export function renderLayout(
 }
 
 export function buttonStyle(action: string, choice?: string | null) {
-  if (action === 'interrupt' || action === 'cancel_draft') return 'danger';
+  if (action === 'interrupt' || action === 'cancel_draft' || action === 'cancel_project')
+    return 'danger';
   // Approval choices deliberately have equal visual weight; no implied default authorization.
   if (action === 'approval') return 'default';
   if (action === 'details' || action === 'select' || (action === 'panel' && choice === 'details'))
