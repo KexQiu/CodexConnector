@@ -11,6 +11,18 @@ async function invoke<T>(request: UiRequest): Promise<T> {
   return result.value as T;
 }
 const api: DesktopApi = {
+  feishuSetup: (action) => invoke({ method: 'feishuSetup', action }),
+  mergeFeishuSetup: (revision) => invoke({ method: 'mergeFeishuSetup', revision }),
+  openFeishu: (entry) => invoke({ method: 'openFeishu', entry }),
+  copyFeishu: (item) => invoke({ method: 'copyFeishu', item }),
+  onFeishuSetup: (listener) => {
+    const receive = (_event: Electron.IpcRendererEvent, state: Parameters<typeof listener>[0]) =>
+      listener(state);
+    ipcRenderer.on('desktop:feishu-setup', receive);
+    return () => {
+      ipcRenderer.removeListener('desktop:feishu-setup', receive);
+    };
+  },
   load: () => invoke({ method: 'load' }),
   saveDraft: (settings, secret) => invoke({ method: 'saveDraft', settings, secret }),
   apply: (settings, secret) => invoke({ method: 'apply', settings, secret }),

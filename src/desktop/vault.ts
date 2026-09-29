@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { defaultRemoteProjectCreation } from '../config/remote-projects.js';
 import { privateDirectory, readPrivate, writeJson } from '../service/files.js';
 import { credentialsSchema, type FeishuCredentials } from '../feishu/credentials.js';
+import { appIdentitySchema } from '../feishu/setup-contracts.js';
 import baseline from '../runtime-baseline.json' with { type: 'json' };
 import { desktopSettingsSchema, type DesktopSettings } from './contracts.js';
 import { legacySettingsSchema, profileId, type LegacySettings } from './legacy.js';
@@ -51,6 +52,12 @@ export class DesktopVault {
   credentials(settings: DesktopSettings, replacement = ''): FeishuCredentials {
     return credentialsSchema.parse({
       ...settings.feishu,
+      appSecret: replacement || this.decryptFor(settings),
+    });
+  }
+  appCredentials(settings: DesktopSettings, replacement = '') {
+    return appIdentitySchema.parse({
+      appId: settings.feishu.appId,
       appSecret: replacement || this.decryptFor(settings),
     });
   }

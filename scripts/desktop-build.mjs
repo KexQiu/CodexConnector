@@ -10,7 +10,7 @@ import {
   writeFileSync,
   chmodSync,
 } from 'node:fs';
-import { dirname, join, relative, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { bundledNode, nodeEnvironment } from './node-runtime.mjs';
 
 const root = dirname(import.meta.dirname);
@@ -19,7 +19,18 @@ if (process.platform !== 'darwin' || process.arch !== 'arm64')
   throw new Error('首版构建需要 macOS arm64');
 // Resolve before touching existing output. The developer's Node is not the shipped runtime.
 const runtime = bundledNode();
-const target = join(root, '.artifacts/desktop-runtime');
+const isolatedRoot = process.env.CONNECTOR_DESKTOP_BUILD_ROOT
+  ? resolve(process.env.CONNECTOR_DESKTOP_BUILD_ROOT)
+  : null;
+if (
+  isolatedRoot &&
+  (!isolatedRoot.startsWith(join(root, '.artifacts') + sep) ||
+    isolatedRoot === join(root, '.artifacts/desktop-runtime'))
+)
+  throw new Error('独立构建必须使用项目 .artifacts 下的专用子目录');
+const target = isolatedRoot
+  ? join(isolatedRoot, 'desktop-runtime')
+  : join(root, '.artifacts/desktop-runtime');
 rmSync(target, { recursive: true, force: true });
 mkdirSync(target, { recursive: true });
 const backend = join(target, 'backend');
@@ -44,6 +55,10 @@ const licenses = join(target, 'licenses');
 mkdirSync(licenses, { recursive: true });
 for (const name of ['react', 'react-dom'])
   cpSync(join(root, 'apps/desktop/node_modules', name, 'LICENSE'), join(licenses, `${name}.txt`));
+cpSync(
+  join(root, 'apps/desktop/assets/qrcode-generator.LICENSE'),
+  join(licenses, 'qrcode-generator.txt'),
+);
 writeFileSync(join(backend, 'package.json'), JSON.stringify({ type: 'module' }));
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 function resolvePackage(name, from) {
@@ -111,9 +126,28 @@ writeFileSync(
     2,
   ),
 );
-execFileSync('pnpm', ['--filter', '@codexconnector/desktop', 'build'], {
-  cwd: root,
-  stdio: 'inherit',
-  env: nodeEnvironment(process.execPath),
-});
-console.log('桌面产物已生成；现有 dist 未改动。');
+if (isolatedRoot) {
+  const appOutput = join(isolatedRoot, 'app');
+  for (const args of [
+    ['build', '--outDir', join(appOutput, 'ui')],
+    ['build', '--config', 'vite.main.config.ts', '--outDir', appOutput],
+  ])
+    execFileSync('pnpm', ['exec', 'vite', ...args], {
+      cwd: join(root, 'apps/desktop'),
+      stdio: 'inherit',
+      env: nodeEnvironment(process.execPath),
+    });
+  writeFileSync(
+    join(appOutput, 'package.json'),
+    JSON.stringify({ name: 'codexconnector-onboarding-test', version: '0.1.0', main: 'main.cjs' }),
+  );
+} else {
+  execFileSync('pnpm', ['--filter', '@codexconnector/desktop', 'build'], {
+    cwd: root,
+    stdio: 'inherit',
+    env: nodeEnvironment(process.execPath),
+  });
+}
+console.log(
+  isolatedRoot ? '独立桌面构建完成；现有运行产物未改动。' : '桌面产物已生成；现有 dist 未改动。',
+);

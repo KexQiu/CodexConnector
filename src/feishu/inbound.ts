@@ -1,3 +1,4 @@
+import { isBindingCommand } from './setup-contracts.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { EventDispatcher } from '@larksuiteoapi/node-sdk';
 import { z } from 'zod';
@@ -139,6 +140,7 @@ export class FeishuInbox {
         return { outcome: 'denied' };
       if (m.message_type !== 'text') return { outcome: 'ignored' };
       const content = z.object({ text: z.string().max(100_000) }).parse(JSON.parse(m.content));
+      if (isBindingCommand(content.text)) return { outcome: 'ignored' };
       if (this.prefix && !content.text.startsWith(this.prefix)) return { outcome: 'ignored' };
       const views = new CardViews(this.store, this.owner, this.credentials.testChatId);
       const quoted = m.parent_id ? views.visible(m.parent_id) : null;

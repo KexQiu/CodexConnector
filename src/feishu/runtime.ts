@@ -1,3 +1,4 @@
+import { acquireFeishuAppLock } from './app-lock.js';
 import { randomUUID } from 'node:crypto';
 import { WSClient } from '@larksuiteoapi/node-sdk';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -23,6 +24,7 @@ export class FeishuRuntime {
   private commands: FeishuCommands;
   private ws: WSClient | undefined;
   private lease: string | undefined;
+  private releaseAppLock: (() => void) | undefined;
   private nextReconnect = 0;
   private reconnectAttempts = 0;
   private nextReconcile = 0;
@@ -100,6 +102,7 @@ export class FeishuRuntime {
       })
       .immediate();
     try {
+      this.releaseAppLock = acquireFeishuAppLock(this.credentials.appId);
       if (this.config.notify) {
         try {
           this.notifyReceiver = new NotifyReceiver(
@@ -213,6 +216,8 @@ export class FeishuRuntime {
   close() {
     this.beginShutdown();
     this.worker.close();
+    this.releaseAppLock?.();
+    this.releaseAppLock = undefined;
     if (this.lease) {
       this.store.db.prepare('DELETE FROM feishu_runtime_lease WHERE token = ?').run(this.lease);
       this.lease = undefined;

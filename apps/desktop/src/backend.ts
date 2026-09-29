@@ -1,3 +1,4 @@
+import type { SetupProgress } from '../../../src/feishu/setup-backend.js';
 import { fork, type ChildProcess } from 'node:child_process';
 import { join } from 'node:path';
 import { z } from 'zod';
@@ -11,6 +12,7 @@ export class Backend {
     { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
   >();
   status = stoppedStatus();
+  onSetup: ((value: SetupProgress) => void) | undefined;
   get connected() {
     return this.child.connected;
   }
@@ -26,6 +28,11 @@ export class Backend {
       stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
     });
     this.child.on('message', (raw: unknown) => {
+      const setup = z.object({ event: z.literal('setup'), value: z.unknown() }).safeParse(raw);
+      if (setup.success) {
+        this.onSetup?.(setup.data.value as SetupProgress);
+        return;
+      }
       const event = z.object({ event: z.literal('status'), value: z.unknown() }).safeParse(raw);
       if (event.success) {
         this.status = event.data.value as DesktopStatus;
@@ -67,10 +74,13 @@ export class Backend {
         return;
       }
       const id = this.nextId++;
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new Error('操作仍未确认，请检查服务状态后重试'));
-      }, 120_000);
+      const timer = setTimeout(
+        () => {
+          this.pending.delete(id);
+          reject(new Error('操作仍未确认，请检查服务状态后重试'));
+        },
+        method === 'setupRun' ? 720_000 : 120_000,
+      );
       this.pending.set(id, { resolve: (value) => resolve(value as T), reject, timer });
       this.child.send({ id, method, args }, (error) => {
         if (error) {
@@ -83,6 +93,7 @@ export class Backend {
   }
   async close() {
     if (this.child.connected) {
+      await this.request('setupCancel');
       await this.request('stop');
       this.child.disconnect();
     }

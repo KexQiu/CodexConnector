@@ -1,3 +1,10 @@
+import {
+  setupActionSchema,
+  officialEntrySchema,
+  type FeishuSetupAction,
+  type FeishuSetupState,
+  type OfficialEntry,
+} from '../feishu/setup-contracts.js';
 import { z } from 'zod';
 import {
   remoteProjectCreationSchema,
@@ -45,6 +52,7 @@ export const stoppedStatus = (): DesktopStatus => ({
   tasks: [],
 });
 export type DesktopSnapshot = {
+  revision?: string | null;
   codexPathNotice?: string;
   settings: DesktopSettings;
   activeSettings: DesktopSettings | null;
@@ -79,6 +87,11 @@ export type ProjectDiscovery = {
   warning?: string;
 };
 export type DesktopApi = {
+  feishuSetup(action: FeishuSetupAction): Promise<FeishuSetupState>;
+  mergeFeishuSetup(revision: string | null): Promise<DesktopSnapshot>;
+  openFeishu(entry: OfficialEntry): Promise<void>;
+  copyFeishu(item: 'permissions' | 'events' | 'binding'): Promise<void>;
+  onFeishuSetup(listener: (state: FeishuSetupState) => void): () => void;
   load(): Promise<DesktopSnapshot>;
   saveDraft(settings: DesktopSettings, secret: string): Promise<DesktopSnapshot>;
   apply(settings: DesktopSettings, secret: string): Promise<DesktopSnapshot>;
@@ -104,6 +117,13 @@ export type DesktopApi = {
   onLogs(listener: (lines: string[]) => void): () => void;
 };
 export const uiRequestSchema = z.discriminatedUnion('method', [
+  z.strictObject({ method: z.literal('feishuSetup'), action: setupActionSchema }),
+  z.strictObject({ method: z.literal('mergeFeishuSetup'), revision: z.string().uuid().nullable() }),
+  z.strictObject({ method: z.literal('openFeishu'), entry: officialEntrySchema }),
+  z.strictObject({
+    method: z.literal('copyFeishu'),
+    item: z.enum(['permissions', 'events', 'binding']),
+  }),
   z.strictObject({
     method: z.enum([
       'load',

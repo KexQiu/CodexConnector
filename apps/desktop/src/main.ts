@@ -1,3 +1,9 @@
+import { DesktopFeishuSetup } from '../../../src/desktop/feishu-setup.js';
+import {
+  assertAuthorizationUrl,
+  FEISHU_SETUP_MANIFEST,
+  officialUrl,
+} from '../../../src/feishu/setup-contracts.js';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, safeStorage, shell, Menu } from 'electron';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -33,6 +39,7 @@ app.setPath('userData', root);
 let window: BrowserWindow | null = null;
 let backend: Backend;
 let vault: DesktopVault;
+let feishuSetup: DesktopFeishuSetup;
 let quitting = false;
 let quitApproved = false;
 let changes: Promise<unknown> = Promise.resolve();
@@ -47,6 +54,7 @@ function snapshot(): DesktopSnapshot {
   const settings = shown?.settings ?? defaults;
   const binary = resolveCodexBinary(settings.codexBinary);
   return {
+    revision: shown?.revision ?? null,
     settings: { ...settings, codexBinary: binary },
     ...(binary !== settings.codexBinary
       ? {
@@ -86,6 +94,36 @@ async function stopWithConfirmation(): Promise<DesktopStatus> {
 }
 async function handle(request: UiRequest): Promise<unknown> {
   switch (request.method) {
+    case 'feishuSetup':
+      return feishuSetup.action(request.action);
+    case 'mergeFeishuSetup':
+      feishuSetup.merge(request.revision);
+      return snapshot();
+    case 'openFeishu': {
+      const setup = feishuSetup.snapshot();
+      if (request.entry === 'authorization') {
+        if (!setup.qr || setup.qr.expiresAt <= Date.now())
+          throw new Error('二维码已过期，请重新生成');
+        await shell.openExternal(assertAuthorizationUrl(setup.qr.url));
+      } else
+        await shell.openExternal(
+          officialUrl(request.entry, setup.appId ?? snapshot().settings.feishu.appId),
+        );
+      return;
+    }
+    case 'copyFeishu': {
+      const binding = feishuSetup.snapshot().bindingCommand;
+      if (request.item === 'binding' && (!binding || binding.expiresAt <= Date.now()))
+        throw new Error('绑定指令已过期，请重新绑定');
+      await clipboard.writeText(
+        request.item === 'permissions'
+          ? JSON.stringify({ scopes: FEISHU_SETUP_MANIFEST.scopes }, null, 2)
+          : request.item === 'events'
+            ? [...FEISHU_SETUP_MANIFEST.events, ...FEISHU_SETUP_MANIFEST.callbacks].join('\n')
+            : binding!.text,
+      );
+      return;
+    }
     case 'load':
       return snapshot();
     case 'loginItem':
@@ -94,9 +132,12 @@ async function handle(request: UiRequest): Promise<unknown> {
       return loginItem.set(request.enabled);
     case 'saveDraft':
       vault.write('draft', vault.prepare(request.settings, request.secret));
+      feishuSetup.refresh();
       return snapshot();
     case 'apply': {
       await stopped();
+      if (feishuSetup.snapshot().operationId)
+        throw new Error('请先结束飞书配置连接或检查，再应用配置');
       const credentials = vault.credentials(request.settings, request.secret);
       const active = vault.read('active');
       const record = vault.prepare(request.settings, credentials.appSecret);
@@ -136,6 +177,8 @@ async function handle(request: UiRequest): Promise<unknown> {
       }
     }
     case 'start': {
+      if (feishuSetup.snapshot().operationId)
+        throw new Error('请先结束飞书配置连接或检查，再启动正式服务');
       const active = vault.read('active');
       if (!active) throw new Error('请先应用配置');
       if (vault.read('draft')) throw new Error('存在未应用草稿，请先应用配置后启动');
@@ -197,7 +240,10 @@ async function quit() {
   try {
     if (window && !window.isDestroyed())
       await flushDraftBeforeClose(window.webContents, ipcMain, pathToFileURL(uiFile).href);
-    if (backend.connected) await stopWithConfirmation();
+    if (backend.connected) {
+      await feishuSetup.cancel();
+      await stopWithConfirmation();
+    }
     await backend.close();
     quitApproved = true;
     app.quit();
@@ -228,24 +274,42 @@ else {
       // Packaged apps use the ICNS in the bundle; use the same artwork in development.
       if (!app.isPackaged && process.platform === 'darwin')
         app.dock?.setIcon(join(__dirname, 'ui/app-icon.png'));
-      vault = new DesktopVault(root, {
-        encrypt(value) {
+      const cipher = {
+        encrypt(value: string) {
           if (!safeStorage.isEncryptionAvailable())
             throw new Error('无法访问 Keychain，未保存凭据');
           return safeStorage.encryptString(value).toString('base64');
         },
-        decrypt(value) {
+        decrypt(value: string) {
           try {
             return safeStorage.decryptString(Buffer.from(value, 'base64'));
           } catch {
             throw new Error('无法解密 Secret，请重新授权 Keychain 或重新填写');
           }
         },
-      });
+      };
+      vault = new DesktopVault(root, cipher);
       backend = new Backend(runtimeRoot, (status) => {
         if (window && !window.isDestroyed()) window.webContents.send('desktop:status', status);
       });
       await backend.request('initialize', root);
+      feishuSetup = new DesktopFeishuSetup(
+        vault,
+        cipher,
+        {
+          get status() {
+            return backend.status;
+          },
+          invoke<T = unknown>(method: string, args?: unknown) {
+            return backend.request<T>(method, args);
+          },
+        },
+        (state) => {
+          if (window && !window.isDestroyed())
+            window.webContents.send('desktop:feishu-setup', state);
+        },
+      );
+      backend.onSetup = (value) => feishuSetup.progress(value);
       ipcMain.handle('desktop:request', async (event, raw: unknown) => {
         if (
           !window ||
@@ -258,7 +322,22 @@ else {
           try {
             return { ok: true, value: await handle(request) };
           } catch (error) {
-            return { ok: false, error: error instanceof Error ? error.message : '操作失败' };
+            const labels: Record<string, string> = {
+              appId: 'App ID',
+              appSecret: 'App Secret',
+              tenantKey: 'Tenant Key',
+              allowedOpenId: '用户 Open ID',
+              testChatId: '单聊 Chat ID',
+            };
+            return {
+              ok: false,
+              error:
+                error instanceof z.ZodError
+                  ? `请检查配置字段：${error.issues.map((issue) => labels[String(issue.path.at(-1))] ?? issue.path.join('.')).join('、')}`
+                  : error instanceof Error
+                    ? error.message
+                    : '操作失败',
+            };
           }
         };
         const operation = changes.then(run);

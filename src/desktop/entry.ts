@@ -1,3 +1,4 @@
+import { FeishuSetupBackend } from '../feishu/setup-backend.js';
 import { inspectProjectless } from '../conversations/capability.js';
 import { existsSync, readdirSync } from 'node:fs';
 import { join, isAbsolute } from 'node:path';
@@ -17,6 +18,10 @@ import { assertLocalConfigIsProtected } from '../config/local-boundary.js';
 if (!process.send) throw new Error('桌面后端只接受私有 IPC 启动');
 process.umask(0o077);
 const runtime = new DesktopRuntime();
+const setup = new FeishuSetupBackend(
+  (value) => send({ event: 'setup', value }),
+  () => runtime.status().feishuConnected,
+);
 let closing = false;
 let applicationRoot: string | undefined;
 let queue: Promise<unknown> = Promise.resolve();
@@ -37,6 +42,10 @@ function send(value: unknown) {
 async function dispatch(method: string, args: unknown): Promise<unknown> {
   if (closing) throw new Error('App 正在退出');
   switch (method) {
+    case 'setupRun':
+      return setup.run(args);
+    case 'setupCancel':
+      return setup.cancel();
     case 'initialize':
       applicationRoot = z.string().refine(isAbsolute).parse(args);
       return { ok: true };
@@ -138,7 +147,7 @@ process.on('message', (raw) => {
   const parsed = requestSchema.safeParse(raw);
   if (!parsed.success) return;
   const { id, method, args } = parsed.data;
-  queue = queue.then(async () => {
+  const run = async () => {
     try {
       send({ id, ok: true, value: await dispatch(method, args) });
     } catch (error) {
@@ -153,13 +162,15 @@ process.on('message', (raw) => {
               : '操作失败',
       });
     }
-  });
+  };
+  if (method === 'setupRun' || method === 'setupCancel') run().catch(() => {});
+  else queue = queue.then(run);
 });
 const quit = () => {
   if (closing) return;
   closing = true;
   clearInterval(timer);
-  Promise.all([runtime.stop(), queue]).then(
+  Promise.all([setup.cancel(), runtime.stop(), queue]).then(
     () => {
       process.exitCode = 0;
       if (process.connected) process.disconnect?.();

@@ -1,3 +1,4 @@
+import { FeishuConnection } from './feishu-connection.js';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import type {
@@ -93,11 +94,6 @@ function App() {
   const lastProjectError = useRef('');
   const [projectStatus, setProjectStatus] = useState({ loading: false, error: false, text: '' });
   const [unavailableProjectRoots, setUnavailableProjectRoots] = useState<string[]>([]);
-  const [feishuCheck, setFeishuCheck] = useState<{
-    phase: 'checking' | 'success' | 'error';
-    text: string;
-  } | null>(null);
-  const checkRevision = useRef(0);
   const api = window.desktop;
   useEffect(() => {
     if (!api) {
@@ -122,8 +118,6 @@ function App() {
               setSettings(saved.settings);
               secretRef.current = '';
               setSecret('');
-              checkRevision.current++;
-              setFeishuCheck(null);
             }
           },
         );
@@ -342,33 +336,6 @@ function App() {
   useEffect(() => {
     contentRef.current?.scrollTo({ top: 0, left: 0, behavior: 'instant' });
   }, [page, step]);
-  function resetFeishuCheck() {
-    checkRevision.current++;
-    setFeishuCheck(null);
-    setNotice((current) => (current?.source === 'feishu' ? null : current));
-  }
-  async function checkConnection() {
-    if (!settings || busy) return;
-    const revision = ++checkRevision.current;
-    setBusy('检查飞书');
-    setNotice(null);
-    setFeishuCheck({ phase: 'checking', text: '正在检查凭据与会话历史读取权限…' });
-    try {
-      const result = await api.checkFeishu(settings, secret);
-      if (revision === checkRevision.current) {
-        setFeishuCheck({ phase: result.ok ? 'success' : 'error', text: result.message });
-        setNotice({ text: result.message, error: !result.ok, source: 'feishu' });
-      }
-    } catch (error) {
-      if (revision === checkRevision.current) {
-        const text = error instanceof Error ? error.message : '连接检查失败，请重试。';
-        setFeishuCheck({ phase: 'error', text });
-        setNotice({ text, error: true, source: 'feishu' });
-      }
-    } finally {
-      setBusy('');
-    }
-  }
   const stopped = snapshot?.status.phase === 'stopped';
   const active = snapshot && snapshot.status.phase !== 'stopped';
   const inform = (text: string) => setNotice({ text, error: false });
@@ -571,88 +538,78 @@ function App() {
         hint: '任务结果将发送到此专用单聊',
       },
     ];
+    const field = (entry: (typeof fields)[number]) => (
+      <label className="field" key={entry.key}>
+        <span>{entry.label}</span>
+        <TextInput
+          spellCheck={false}
+          placeholder={entry.placeholder}
+          value={settings.feishu[entry.key]}
+          onChange={(event) =>
+            update({ ...settings, feishu: { ...settings.feishu, [entry.key]: event.target.value } })
+          }
+        />
+        <small>{entry.hint}</small>
+      </label>
+    );
+    const credentials = (
+      <div className="form-grid">
+        {fields.filter((item) => item.key === 'appId').map(field)}
+        <label className="field">
+          <span>App Secret</span>
+          <TextInput
+            type="password"
+            autoComplete="new-password"
+            placeholder={snapshot?.hasSecret ? '已保存；留空保持原值' : '填写应用密钥'}
+            value={secret}
+            onChange={(event) => {
+              if (closingRef.current) return;
+              secretRef.current = event.target.value;
+              setSecret(event.target.value);
+              editorRevision.current =
+                cache.current?.update(settings, event.target.value) ?? editorRevision.current;
+              setDirty(true);
+            }}
+          />
+          <small>由 macOS Keychain 保护，已保存的密钥不会回显。</small>
+        </label>
+      </div>
+    );
     return (
-      <section className="panel">
-        <div className="section-heading">
-          <span className="eyebrow">FEISHU CONNECTION</span>
-          <h2>配置机器人连接</h2>
-          <p>连接信息只保存在这台 Mac 上，不能从飞书修改。</p>
-        </div>
-        <div className="form-grid">
-          {fields.map((field) => (
-            <label className="field" key={field.key}>
-              <span id={`feishu-${field.key}-label`}>{field.label}</span>
-              <TextInput
-                aria-labelledby={`feishu-${field.key}-label`}
-                aria-describedby={`feishu-${field.key}-hint`}
-                spellCheck={false}
-                placeholder={field.placeholder}
-                value={settings.feishu[field.key]}
-                onChange={(e) => {
-                  resetFeishuCheck();
-                  update({
-                    ...settings,
-                    feishu: { ...settings.feishu, [field.key]: e.target.value },
-                  });
-                }}
-              />
-              <small id={`feishu-${field.key}-hint`}>{field.hint}</small>
-            </label>
-          ))}
-          <label className="field full">
-            <span id="feishu-secret-label">App Secret</span>
-            <TextInput
-              aria-labelledby="feishu-secret-label"
-              aria-describedby="feishu-secret-hint"
-              type="password"
-              autoComplete="new-password"
-              placeholder={
-                snapshot?.hasSecret ? '已保存；留空保持原值，输入可替换' : '填写应用密钥'
-              }
-              value={secret}
-              onChange={(e) => {
-                resetFeishuCheck();
-                if (closingRef.current) return;
-                secretRef.current = e.target.value;
-                setSecret(e.target.value);
-                editorRevision.current =
-                  cache.current?.update(settings, e.target.value) ?? editorRevision.current;
-                setDirty(true);
-              }}
-            />
-            <small id="feishu-secret-hint">使用 macOS Keychain 保护，已保存的密钥不会回显。</small>
-          </label>
-        </div>
-        <div className="inline-note">
-          在飞书后台启用长连接，订阅消息事件与 card.action.trigger 回调，并开通
-          im:message.history:readonly 后发布生效。
-        </div>
-        {snapshot?.hasDesktopNotifications && (
-          <div className="inline-note">
-            已保留原部署的桌面任务通知。更换上方任一身份或会话字段后，新档案不会接收原桌面通知；
-            原通知脚本与缓存目录会保留。
+      <FeishuConnection
+        api={api}
+        settings={settings}
+        configured={!!snapshot?.configured}
+        stopped={!!stopped}
+        credentials={credentials}
+        identity={
+          <div className="form-grid">
+            {fields.filter((item) => item.key !== 'appId').map(field)}
           </div>
-        )}
-        <div className="action-row">
-          {button(
-            feishuCheck?.phase === 'checking' ? '正在检查…' : '检查连接配置',
-            checkConnection,
-          )}
-          <span className="helper">不会发送测试消息</span>
-        </div>
-        {feishuCheck && (
-          <div className={`check-feedback ${feishuCheck.phase}`}>
-            <strong>
-              {feishuCheck.phase === 'checking'
-                ? '检查中'
-                : feishuCheck.phase === 'success'
-                  ? '检查通过'
-                  : '检查未通过'}
-            </strong>
-            <span>{feishuCheck.text}</span>
-          </div>
-        )}
-      </section>
+        }
+        notify={(text, error = false) => setNotice({ text, error, source: 'feishu' })}
+        onFlush={async () => {
+          await cache.current?.flush();
+        }}
+        onMerge={async () => {
+          if (!cache.current) return;
+          const merged = await cache.current.mergeFeishu(async () => {
+            const current = await api.load();
+            return api.mergeFeishuSetup(current.revision ?? null);
+          });
+          editorRevision.current = merged.revision;
+          settingsRef.current = merged.snapshot.settings;
+          setSettings(merged.snapshot.settings);
+          setSnapshot(merged.snapshot);
+          secretRef.current = '';
+          setSecret('');
+          setDirty(false);
+        }}
+        onComplete={async () => {
+          await cache.current?.apply();
+          setPage('overview');
+        }}
+      />
     );
   }
   function projectsForm() {

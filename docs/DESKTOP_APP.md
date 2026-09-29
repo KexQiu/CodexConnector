@@ -9,11 +9,25 @@
 1. 打开 `apps/desktop/out/make` 内的 DMG，将 **CodexConnector.app** 拖到“应用程序”。这是使用 ad-hoc 签名的内部包，尚未完成 Developer ID 签名与公证；macOS 可能要求在“系统设置 → 隐私与安全性”确认打开。
 2. 打开 App。它默认停止，不会自动接收飞书消息。
 3. 首次设置按 **Codex → 飞书连接 → 本地项目 → 检查与启动** 完成。自动探测 Codex 新旧布局，也可手动选择可执行文件，点击“检查版本与协议”；登录操作在 Codex 桌面端完成，启动网关时核对登录状态。
-4. 飞书填写 App ID、App Secret、Tenant Key、允许操作的 Open ID 和专用单聊 Chat ID。检查连接配置会验证凭据与会话历史读取权限，检查中、成功和失败提示均显示在按钮下方；不发送消息，也不启动第二条长连接。
+4. 飞书连接提供“扫码创建机器人”“连接已有机器人”“手动配置”。扫码入口为试用；已有应用填写 App ID 与 Secret 后可用一次性指令绑定单聊。原五字段仍在高级配置中。可按内置教程核对权限、长连接和发布，教程不依赖联网；扫码和官方入口需要联网。
 5. 自动加载本机 Codex 已保存的项目，也可手动添加目录并填写稳定的项目标识。本机添加的项目默认关闭远程执行；需要从飞书执行时再选择只读分析或允许修改文件，并设置联网权限。并发数量可在“本地项目”底部设置（默认 1，范围 1～8）。
 6. 点击 **应用配置 → 启动连接**。只有飞书和 Codex 后端都就绪才显示“已连接”。
 
-飞书后台仍需完成应用发布、消息事件订阅、长连接模式、`card.action.trigger` 回调和 `im:message.history:readonly` 权限。连接检查成功不代表事件与卡片回调已完成真实验收。
+飞书后台仍需完成应用发布、消息事件订阅、长连接模式、`card.action.trigger` 回调和消息权限。完整证据与待验收项目见 [F0–F3 验收记录](./gates/feishu-onboarding.md)。扫码尚未完成真实端到端验收，不标记为推荐。
+
+## 飞书快速配置
+
+1. 点击 **扫码创建机器人**，填写名称并生成二维码，使用国内飞书扫码；也可点击“在浏览器中打开”。授权成功后，App 先将凭据加密保存。发布或绑定尚未完成时，可以退出，下次继续同一个应用。
+2. 点击 **查看教程**，按“创建应用 → 启用机器人 → 配置权限 → 事件与回调 → 发布与可见范围 → 绑定单聊”核对。各步包含平台路径示意、完成标准、官方入口和可复制配置。勾选只记录人工进度。
+3. 点击 **绑定单聊**，让配置连接保持在线，再去飞书后台保存消息事件和卡片回调的长连接模式，按平台要求发布/审批。已有 Webhook 应用请先确认切换影响，再手动修改接收方式。
+4. 在机器人单聊中发送本页生成的 `/connector-bind …` 指令。指令 5 分钟内有效；只接收目标应用的用户单聊，不会变成 Codex 任务。若平台没有返回扫码账号，须回到本机核对候选 Open ID 和 Chat ID 后确认。
+5. 点击 **保存绑定到当前配置**。这一步只合并飞书字段，项目编辑仍保留。已有完整配置默认保留原绑定，只有点击“重新绑定单聊”后才进入新绑定流程。
+6. 可点击 **检查连接**：最长 30 秒验证凭据、单聊历史读取与长连接握手。不会发送消息、创建卡片或执行模型任务；当前同配置连接在线时复用，否则开启临时诊断连接，结束后关闭。
+7. 也可直接点击 **跳过验证，完成配置**。界面显示“配置已保存，未验证”，应用配置后回到总览，仍需手动启动。检查失败可以重试或跳过；修改 Secret 或身份后旧结果失效。
+
+基础检查不代表消息订阅和卡片回调已经真实验证。跳过检查不会跳过正式启动必需的凭据、历史权限与 Codex 运行环境检查。扫码、绑定与正式网关不能同时占用同一 App ID；请先停止正式服务再配置，不自动停掉你的任务。
+
+扫码等待和连接检查都可以取消。取消等待不能撤销你已经在飞书平台创建的应用；若平台已经创建但本机没有收到凭据，请通过已有机器人入口继续，避免重复创建。
 
 ## 项目自动刷新与已有开发服务
 
@@ -77,6 +91,7 @@
 
 - 正式 App 数据目录：`~/Library/Application Support/CodexConnector`。开发版使用项目 `.artifacts/desktop-user-data`，两者隔离。
 - Secret 使用 `safeStorage` 加密，密钥由 macOS Keychain 管理。密钥不可用时失败并提示，不降级保存明文。内部包更新可能要求重新授予 Keychain 访问。
+- `feishu-setup.json` 保存扫码待配置应用的加密凭据、教程进度和检查记录。绑定验证码与授权二维码不跨重启恢复，不写入任务数据库；退出会取消轮询并关闭配置连接。
 - `active.json` 是配置与加密 Secret 的同一个原子快照；`draft.json` 是尚未应用的草稿。目录权限 700，文件权限 600。
 - 更换 App ID、Tenant Key、Open ID 或 Chat ID 会切换到隔离档案；原历史保留。Secret 更新不会改变档案。
 - 运行时可保存草稿，应用配置必须停止服务。存在未决任务时拒绝应用，防止修改项目目录/身份后执行旧工作。
@@ -99,7 +114,16 @@ pnpm desktop:make
 
 `desktop:setup` 只准备固定版本 Electron 并校验官方 SHA-256，同时编译 DMG 所需的 `macos-alias`、`fs-xattr` 两个构建辅助模块。保持全局依赖安装脚本关闭。若下载中断，删除 `.artifacts/electron-download` 中未完成的对应 ZIP 后重试；替代镜像文件也必须通过固定官方校验值。
 
-`desktop:build` 生成独立 `.artifacts/desktop-runtime` 和 `apps/desktop/dist`，不会覆盖现有 CLI 服务使用的根 `dist`。后端生产依赖被实体化，原生 SQLite 由随包 Node 加载，不由 Electron 加载。
+需要保护正在运行的开发产物时，可以指定独立构建目录：
+
+```sh
+CONNECTOR_DESKTOP_BUILD_ROOT="$PWD/.artifacts/feishu-onboarding-20260929" pnpm desktop:build
+CONNECTOR_DEV_RUNTIME_ROOT="$PWD/.artifacts/feishu-onboarding-20260929/desktop-runtime" \
+CONNECTOR_DEV_DATA_ROOT="$PWD/.artifacts/feishu-onboarding-20260929/manual-profile" \
+  apps/desktop/node_modules/.bin/electron .artifacts/feishu-onboarding-20260929/app
+```
+
+默认的 `desktop:build` 生成独立 `.artifacts/desktop-runtime` 和 `apps/desktop/dist`，不会覆盖现有 CLI 服务使用的根 `dist`。后端生产依赖被实体化，原生 SQLite 由随包 Node 加载，不由 Electron 加载。
 
 ```sh
 pnpm typecheck

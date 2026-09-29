@@ -32,8 +32,9 @@ export class FeishuApi {
   private token: string | undefined;
   private expiresAt = 0;
   constructor(
-    private readonly credentials: FeishuCredentials,
+    private readonly credentials: Pick<FeishuCredentials, 'appId' | 'appSecret'>,
     private readonly fetcher: typeof fetch = fetch,
+    private readonly signal?: AbortSignal,
   ) {}
   private async request(
     path: string,
@@ -51,7 +52,9 @@ export class FeishuApi {
         },
         ...(data ? { body: JSON.stringify(data) } : {}),
         redirect: 'error',
-        signal: AbortSignal.timeout(10_000),
+        signal: this.signal
+          ? AbortSignal.any([this.signal, AbortSignal.timeout(10_000)])
+          : AbortSignal.timeout(10_000),
       });
     } catch {
       throw new FeishuApiError(auth && method !== 'GET' ? 'unknown' : 'not-sent');
@@ -125,6 +128,15 @@ export class FeishuApi {
     const match = items.find((item) => item.message_id === message);
     if (!match) throw new FeishuApiError('not-sent');
     return match;
+  }
+  async checkHistory(chat: string) {
+    await this.prepare();
+    const query = new URLSearchParams({
+      container_id_type: 'chat',
+      container_id: chat,
+      page_size: '1',
+    });
+    await this.request(`im/v1/messages?${query.toString()}`, 'GET');
   }
   async history(chat: string, since: number): Promise<RemoteMessage[]> {
     await this.prepare();

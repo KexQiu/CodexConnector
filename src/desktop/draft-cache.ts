@@ -82,6 +82,28 @@ export class DesktopDraftCache {
     });
   }
 
+  mergeFeishu(
+    operation: () => Promise<DesktopSnapshot>,
+  ): Promise<{ snapshot: DesktopSnapshot; revision: number }> {
+    this.clearTimer();
+    return this.enqueue(async () => {
+      await this.writePending();
+      const imported = await operation();
+      // Only replace Feishu fields. Project edits made while IPC was in flight survive.
+      this.current = {
+        settings: { ...this.current.settings, feishu: imported.settings.feishu },
+        secret: '',
+        revision: this.current.revision + 1,
+      };
+      this.cachedSecret = undefined;
+      await this.writePending();
+      return {
+        snapshot: { ...imported, settings: this.current.settings },
+        revision: this.current.revision,
+      };
+    });
+  }
+
   dispose() {
     this.disposed = true;
     this.clearTimer();
