@@ -88,6 +88,7 @@ export type ProjectDiscovery = {
 };
 export type DesktopApi = {
   feishuSetup(action: FeishuSetupAction): Promise<FeishuSetupState>;
+  applyFeishuSetup(revision: string): Promise<DesktopSnapshot>;
   mergeFeishuSetup(revision: string | null): Promise<DesktopSnapshot>;
   openFeishu(entry: OfficialEntry): Promise<void>;
   copyFeishu(item: 'permissions' | 'events' | 'binding'): Promise<void>;
@@ -117,6 +118,7 @@ export type DesktopApi = {
   onLogs(listener: (lines: string[]) => void): () => void;
 };
 export const uiRequestSchema = z.discriminatedUnion('method', [
+  z.strictObject({ method: z.literal('applyFeishuSetup'), revision: z.string().uuid() }),
   z.strictObject({ method: z.literal('feishuSetup'), action: setupActionSchema }),
   z.strictObject({ method: z.literal('mergeFeishuSetup'), revision: z.string().uuid().nullable() }),
   z.strictObject({ method: z.literal('openFeishu'), entry: officialEntrySchema }),

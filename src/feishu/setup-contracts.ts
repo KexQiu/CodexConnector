@@ -44,7 +44,29 @@ export const unchecked = (status: FeishuCheckResult['status'] = 'skipped'): Feis
   history: { status: 'pending', message: '尚未检查' },
   websocket: { status: 'pending', message: '尚未检查' },
 });
+export const feishuFieldsSchema = z.object({
+  appId: z.string().max(256),
+  tenantKey: z.string().max(256),
+  allowedOpenId: z.string().max(256),
+  testChatId: z.string().max(256),
+});
+export const flowEditorSchema = z.object({
+  revision: z.string().uuid(),
+  mode: z.enum(['create', 'existing']),
+  step: z.number().int().min(1).max(4),
+  name: z.string().max(60),
+  fields: feishuFieldsSchema,
+  encryptedSecret: z.string(),
+  scannerOpenId: z.string().optional(),
+  platformConfirmed: z.boolean(),
+});
+export type FeishuFlowDraft = Omit<
+  z.infer<typeof flowEditorSchema>,
+  'encryptedSecret' | 'scannerOpenId'
+> & { hasSecret: boolean };
 export type FeishuSetupState = {
+  draft?: FeishuFlowDraft | null;
+  connectionExpiresAt?: number | null;
   operationId: string | null;
   phase:
     | 'idle'
@@ -69,6 +91,20 @@ export type FeishuSetupState = {
   tutorial: number[];
 };
 export const setupActionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('begin'),
+    mode: z.enum(['create', 'existing']),
+    intent: z.enum(['replace', 'credentials', 'binding', 'resume']),
+  }),
+  z.strictObject({
+    kind: z.literal('edit'),
+    revision: z.string().uuid(),
+    fields: feishuFieldsSchema,
+    secret: z.string().max(256),
+    name: z.string().max(60),
+  }),
+  z.strictObject({ kind: z.literal('step'), step: z.number().int().min(1).max(4) }),
+  z.strictObject({ kind: z.enum(['connect', 'suspend', 'flow-bind', 'flow-check', 'flow-skip']) }),
   z.strictObject({
     kind: z.literal('register'),
     mode: z.enum(['create', 'existing']),

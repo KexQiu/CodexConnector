@@ -12,6 +12,7 @@ async function invoke<T>(request: UiRequest): Promise<T> {
 }
 const api: DesktopApi = {
   feishuSetup: (action) => invoke({ method: 'feishuSetup', action }),
+  applyFeishuSetup: (revision) => invoke({ method: 'applyFeishuSetup', revision }),
   mergeFeishuSetup: (revision) => invoke({ method: 'mergeFeishuSetup', revision }),
   openFeishu: (entry) => invoke({ method: 'openFeishu', entry }),
   copyFeishu: (item) => invoke({ method: 'copyFeishu', item }),

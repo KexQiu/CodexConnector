@@ -8,10 +8,12 @@ import {
   bindingSchema,
   feishuCheckSchema,
   unchecked,
+  flowEditorSchema,
   type FeishuSetupAction,
   type FeishuSetupState,
   type FeishuBinding,
 } from '../feishu/setup-contracts.js';
+import { credentialsSchema } from '../feishu/credentials.js';
 import type { SetupProgress } from '../feishu/setup-backend.js';
 import type { DesktopSettings, DesktopStatus } from './contracts.js';
 import { type DesktopVault, defaultSettings, type SecretCipher } from './vault.js';
@@ -26,6 +28,7 @@ const diskSchema = z.object({
   version: z.literal(1),
   pending: pendingSchema.nullable(),
   tutorial: z.array(z.number().int().min(0).max(5)),
+  editor: flowEditorSchema.nullable().optional(),
   check: z.object({ fingerprint: z.string(), result: feishuCheckSchema }).nullable(),
 });
 type Disk = z.infer<typeof diskSchema>;
@@ -46,6 +49,7 @@ export class DesktopFeishuSetup {
   private state: FeishuSetupState;
   private job: Promise<void> | undefined;
   private generation = 0;
+  private sessionId: string | null = null;
   private fingerprintCache: { source: string; value: string } | undefined;
   private readonly path: string;
   constructor(
@@ -78,6 +82,25 @@ export class DesktopFeishuSetup {
     return (this.vault.read('draft') ?? this.vault.read('active'))?.settings ?? defaultSettings();
   }
   private fingerprint() {
+    if (this.disk.editor) {
+      const editor = this.disk.editor;
+      try {
+        return createHash('sha256')
+          .update(
+            JSON.stringify(
+              credentialsSchema.parse({
+                ...editor.fields,
+                appSecret: editor.encryptedSecret
+                  ? this.cipher.decrypt(editor.encryptedSecret)
+                  : '',
+              }),
+            ),
+          )
+          .digest('hex');
+      } catch {
+        return '';
+      }
+    }
     const settings = this.settings();
     const record = this.vault.read('draft') ?? this.vault.read('active');
     const source = JSON.stringify([settings.feishu, record?.encryptedSecret]);
@@ -103,6 +126,13 @@ export class DesktopFeishuSetup {
           : unchecked();
     return {
       ...this.state,
+      draft: this.disk.editor
+        ? (() => {
+            const { encryptedSecret, ...editor } = this.disk.editor;
+            delete editor.scannerOpenId;
+            return { ...editor, hasSecret: !!encryptedSecret };
+          })()
+        : null,
       ...(this.state.phase === 'complete' && check.status === 'changed'
         ? { message: '配置已变更，待验证' }
         : {}),
@@ -122,12 +152,20 @@ export class DesktopFeishuSetup {
     this.refresh();
   }
   progress(value: SetupProgress) {
+    if (value.operationId === this.sessionId) {
+      if (value.kind === 'connected') this.update({ connected: value.connected });
+      if (value.kind === 'session-closed') {
+        this.sessionId = null;
+        this.update({ connected: false, connectionExpiresAt: null, bindingCommand: null });
+      }
+      return;
+    }
     if (value.operationId !== this.state.operationId || !this.job) return;
     if (value.kind === 'qr') this.update({ qr: { url: value.url, expiresAt: value.expiresAt } });
     else if (value.kind === 'binding')
       this.update({ bindingCommand: { text: value.text, expiresAt: value.expiresAt } });
     else if (value.kind === 'connected') this.update({ connected: value.connected });
-    else this.update({ message: value.message });
+    else if (value.kind === 'status') this.update({ message: value.message });
   }
   private requireStopped() {
     if (this.backend.status.phase !== 'stopped')
@@ -147,7 +185,7 @@ export class DesktopFeishuSetup {
       qr: null,
       candidate: null,
       bindingCommand: null,
-      connected: false,
+      connected: this.sessionId ? this.state.connected : false,
       message:
         phase === 'authorizing'
           ? '正在向飞书申请授权二维码…'
@@ -167,13 +205,21 @@ export class DesktopFeishuSetup {
         const code = error instanceof Error ? error.message : '';
         this.update({
           phase: code === 'setup:expired_token' ? 'expired' : 'error',
-          message: errors[code] ?? '配置未完成。请检查网络、应用权限及本机是否有其他连接，再重试。',
+          message:
+            phase === 'binding' && code === 'setup:expired_token'
+              ? '绑定指令已过期，请重新生成。配置连接仍可继续使用。'
+              : (errors[code] ?? '配置未完成。请检查网络、应用权限及本机是否有其他连接，再重试。'),
         });
       })
       .finally(() => {
         if (generation === this.generation) {
           this.job = undefined;
-          this.update({ connected: false, bindingCommand: null, qr: null, operationId: null });
+          this.update({
+            ...(this.sessionId ? {} : { connected: false }),
+            bindingCommand: null,
+            qr: null,
+            operationId: null,
+          });
         }
       });
     return this.snapshot();
@@ -184,7 +230,9 @@ export class DesktopFeishuSetup {
     await this.backend.invoke('setupCancel');
     await job;
     this.job = undefined;
+    this.sessionId = null;
     this.update({
+      connectionExpiresAt: null,
       operationId: null,
       phase: 'cancelled',
       message: '配置操作已取消，已获取的应用信息仍保留。',
@@ -204,8 +252,220 @@ export class DesktopFeishuSetup {
       message: '单聊绑定已保存，请将它合入当前草稿。',
     });
   }
+  private editor() {
+    if (!this.disk.editor) throw new Error('请先开始飞书配置');
+    return this.disk.editor;
+  }
+  private saveEditor() {
+    this.editor().revision = randomUUID();
+    this.save();
+    this.refresh();
+  }
+  private pair() {
+    const editor = this.editor();
+    return appIdentitySchema.parse({
+      appId: editor.fields.appId,
+      appSecret: editor.encryptedSecret ? this.cipher.decrypt(editor.encryptedSecret) : '',
+    });
+  }
+  private async connectEditor() {
+    this.requireStopped();
+    const operationId = randomUUID();
+    this.sessionId = operationId;
+    try {
+      const result = await this.backend.invoke<{
+        expiresAt: number;
+        connected: boolean;
+        operationId: string;
+      }>('setupConnect', { operationId, credentials: this.pair() });
+      this.sessionId = result.operationId;
+      this.update({
+        connected: result.connected,
+        connectionExpiresAt: result.expiresAt,
+        appId: this.editor().fields.appId,
+      });
+    } catch (error) {
+      this.sessionId = null;
+      throw error;
+    }
+  }
+  finish(revision: string, defaults: DesktopSettings) {
+    this.requireStopped();
+    if (this.job || this.sessionId) throw new Error('请先结束配置连接');
+    const editor = this.editor();
+    if (editor.revision !== revision) throw new Error('配置已更新，请重试保存');
+    this.pair();
+    bindingSchema.parse(editor.fields);
+    this.vault.applyFeishu(editor.fields, editor.encryptedSecret, defaults);
+    this.disk.editor = null;
+    this.disk.pending = null;
+    this.save();
+    this.update({ phase: 'complete', message: '飞书配置已保存，连接仍需手动启动。' });
+  }
+  async finishConnection() {
+    await this.cancel();
+  }
+  private async flowAction(action: FeishuSetupAction): Promise<FeishuSetupState | undefined> {
+    if (action.kind === 'begin') {
+      await this.cancel();
+      if (action.intent === 'resume' && this.disk.editor) return this.snapshot();
+      const current = this.settings();
+      const pending = action.intent === 'resume' ? this.disk.pending : null;
+      const preserve = action.intent !== 'replace';
+      const fields = pending
+        ? {
+            appId: pending.appId,
+            tenantKey: '',
+            allowedOpenId: '',
+            testChatId: '',
+            ...pending.binding,
+          }
+        : preserve
+          ? current.feishu
+          : defaultSettings().feishu;
+      let encryptedSecret = pending?.encryptedSecret ?? '';
+      if (!encryptedSecret && preserve) {
+        const record = this.vault.read('draft') ?? this.vault.read('active');
+        if (record?.settings.feishu.appId === fields.appId)
+          encryptedSecret = record.encryptedSecret;
+      }
+      this.disk.editor = {
+        revision: randomUUID(),
+        mode: action.mode,
+        step: action.intent === 'binding' ? 3 : pending ? (pending.binding ? 4 : 2) : 1,
+        name: 'CodexConnector',
+        fields,
+        encryptedSecret,
+        platformConfirmed: preserve && !!this.vault.read('active') && !pending,
+        ...(pending?.scannerOpenId ? { scannerOpenId: pending.scannerOpenId } : {}),
+      };
+      this.save();
+      this.update({
+        phase: 'idle',
+        appId: fields.appId || null,
+        candidate: null,
+        message: '填写内容会自动保存在本机。',
+      });
+      return this.snapshot();
+    }
+    if (action.kind === 'edit') {
+      if (this.job || this.sessionId) throw new Error('请先返回上一步或结束当前连接再修改');
+      const editor = this.editor();
+      if (action.revision !== editor.revision) throw new Error('配置已更新，请重新打开本步骤');
+      const changedApp = action.fields.appId !== editor.fields.appId;
+      const hadIdentity = !!editor.fields.appId;
+      editor.fields = { ...action.fields };
+      editor.name = action.name;
+      if (changedApp) {
+        if (hadIdentity)
+          editor.fields = {
+            appId: action.fields.appId,
+            tenantKey: '',
+            allowedOpenId: '',
+            testChatId: '',
+          };
+        editor.encryptedSecret = '';
+        delete editor.scannerOpenId;
+        editor.platformConfirmed = false;
+      }
+      if (action.secret) editor.encryptedSecret = this.cipher.encrypt(action.secret);
+      this.saveEditor();
+      return this.snapshot();
+    }
+    if (action.kind === 'suspend') {
+      await this.cancel();
+      return this.snapshot();
+    }
+    if (action.kind === 'connect') {
+      await this.connectEditor();
+      return this.snapshot();
+    }
+    if (action.kind === 'step') {
+      const editor = this.editor();
+      if (action.step > 1) this.pair();
+      if (action.step === 4) bindingSchema.parse(editor.fields);
+      if (action.step === 3 && editor.step === 2) editor.platformConfirmed = true;
+      if (action.step < editor.step) await this.cancel();
+      else if (action.step === 4 && this.job) {
+        ++this.generation;
+        await this.backend.invoke('setupPauseBinding');
+        await this.job;
+        this.job = undefined;
+        this.update({ operationId: null, bindingCommand: null });
+      }
+      editor.step = action.step;
+      this.saveEditor();
+      this.update({ phase: 'idle', candidate: null });
+      return this.snapshot();
+    }
+    if (action.kind === 'flow-bind') {
+      this.requireStopped();
+      ++this.generation;
+      await this.backend.invoke('setupPauseBinding');
+      await this.job;
+      this.job = undefined;
+      await this.connectEditor();
+      const editor = this.editor();
+      return this.launch(
+        'binding',
+        {
+          kind: 'bind',
+          credentials: this.pair(),
+          reuseSetup: true,
+          ...(editor.scannerOpenId ? { scannerOpenId: editor.scannerOpenId } : {}),
+        },
+        (raw) => {
+          const binding = bindingSchema.parse(raw);
+          if (editor.scannerOpenId) {
+            editor.fields = { appId: editor.fields.appId, ...binding };
+            this.saveEditor();
+            this.update({ phase: 'bound', message: '已确认单聊，点击下一步继续。' });
+          } else
+            this.update({
+              phase: 'confirming',
+              candidate: binding,
+              message: '请确认这是你的账号与单聊。',
+            });
+        },
+      );
+    }
+    if (action.kind === 'confirm' && this.disk.editor) {
+      if (!this.state.candidate) throw new Error('没有待确认的绑定');
+      const editor = this.editor();
+      editor.fields = { appId: editor.fields.appId, ...this.state.candidate };
+      this.saveEditor();
+      this.update({ phase: 'bound', candidate: null, message: '绑定已确认。' });
+      return this.snapshot();
+    }
+    if (action.kind === 'flow-skip') {
+      await this.cancel();
+      this.disk.check = { fingerprint: this.fingerprint(), result: unchecked() };
+      this.save();
+      this.update({ phase: 'complete', message: '未进行检查，可直接保存配置。' });
+      return this.snapshot();
+    }
+    if (action.kind === 'flow-check') {
+      this.requireStopped();
+      const editor = this.editor();
+      const credentials = { ...this.pair(), ...bindingSchema.parse(editor.fields) };
+      const fingerprint = this.fingerprint();
+      return this.launch('checking', { kind: 'check', credentials }, (raw) => {
+        const result = feishuCheckSchema.parse(raw);
+        this.disk.check = { fingerprint, result };
+        this.save();
+        this.update({
+          phase: 'complete',
+          message:
+            result.status === 'passed' ? '基础连接检查通过' : '检查未通过，请修复或跳过检查。',
+        });
+      });
+    }
+    return undefined;
+  }
   async action(action: FeishuSetupAction): Promise<FeishuSetupState> {
     if (action.kind === 'load') return this.snapshot();
+    const flow = await this.flowAction(action);
+    if (flow) return flow;
     if (action.kind === 'tutorial') {
       this.disk.tutorial = [...new Set(action.steps)];
       this.save();
@@ -229,7 +489,10 @@ export class DesktopFeishuSetup {
     if (this.job) throw new Error('已有配置操作进行中，请先取消。');
     if (action.kind === 'register') {
       this.requireStopped();
-      if (action.mode === 'create' && this.disk.pending)
+      if (
+        action.mode === 'create' &&
+        (this.disk.editor?.encryptedSecret || (!this.disk.editor && this.disk.pending))
+      )
         throw new Error('已有待配置应用，请继续配置或改用已有机器人入口，不重复创建。');
       if (action.mode === 'existing' && !action.appId) throw new Error('请先填写要补配的 App ID');
       this.cipher.encrypt('keychain-preflight');
@@ -248,6 +511,20 @@ export class DesktopFeishuSetup {
           ...(result.scannerOpenId ? { scannerOpenId: result.scannerOpenId } : {}),
           ...(binding?.success ? { binding: binding.data } : {}),
         };
+        if (this.disk.editor) {
+          const editor = this.disk.editor;
+          editor.fields = {
+            appId: result.appId,
+            tenantKey: '',
+            allowedOpenId: '',
+            testChatId: '',
+            ...(binding?.success ? binding.data : {}),
+          };
+          editor.encryptedSecret = this.disk.pending.encryptedSecret;
+          if (result.scannerOpenId) editor.scannerOpenId = result.scannerOpenId;
+          editor.step = 2;
+          editor.revision = randomUUID();
+        }
         this.save(); // Credentials are durable before any follow-up UI or connection.
         this.update({
           phase: binding?.success ? 'bound' : 'pending',

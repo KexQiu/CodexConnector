@@ -96,6 +96,14 @@ async function handle(request: UiRequest): Promise<unknown> {
   switch (request.method) {
     case 'feishuSetup':
       return feishuSetup.action(request.action);
+    case 'applyFeishuSetup': {
+      await stopped();
+      await feishuSetup.finishConnection();
+      const defaults = defaultSettings();
+      defaults.codexBinary = resolveCodexBinary();
+      feishuSetup.finish(request.revision, defaults);
+      return snapshot();
+    }
     case 'mergeFeishuSetup':
       feishuSetup.merge(request.revision);
       return snapshot();
@@ -107,7 +115,10 @@ async function handle(request: UiRequest): Promise<unknown> {
         await shell.openExternal(assertAuthorizationUrl(setup.qr.url));
       } else
         await shell.openExternal(
-          officialUrl(request.entry, setup.appId ?? snapshot().settings.feishu.appId),
+          officialUrl(
+            request.entry,
+            setup.draft?.fields.appId || setup.appId || snapshot().settings.feishu.appId,
+          ),
         );
       return;
     }
@@ -136,7 +147,7 @@ async function handle(request: UiRequest): Promise<unknown> {
       return snapshot();
     case 'apply': {
       await stopped();
-      if (feishuSetup.snapshot().operationId)
+      if (feishuSetup.snapshot().operationId || feishuSetup.snapshot().connectionExpiresAt)
         throw new Error('请先结束飞书配置连接或检查，再应用配置');
       const credentials = vault.credentials(request.settings, request.secret);
       const active = vault.read('active');
@@ -177,7 +188,7 @@ async function handle(request: UiRequest): Promise<unknown> {
       }
     }
     case 'start': {
-      if (feishuSetup.snapshot().operationId)
+      if (feishuSetup.snapshot().operationId || feishuSetup.snapshot().connectionExpiresAt)
         throw new Error('请先结束飞书配置连接或检查，再启动正式服务');
       const active = vault.read('active');
       if (!active) throw new Error('请先应用配置');

@@ -33,7 +33,7 @@ const pageLabels: Record<Page, string> = {
   projects: '本地项目',
   logs: '日志与诊断',
   preferences: '应用设置',
-  setup: '首次设置',
+  setup: '准备清单',
 };
 const phaseLabels: Record<DesktopStatus['phase'], string> = {
   stopped: '已停止',
@@ -64,7 +64,7 @@ const permissionOptions: SelectOption[] = [
 function App() {
   const [snapshot, setSnapshot] = useState<DesktopSnapshot | null>(null);
   const [settings, setSettings] = useState<DesktopSettings | null>(null);
-  const [secret, setSecret] = useState('');
+  const [, setSecret] = useState('');
   const [projectlessCheck, setProjectlessCheck] = useState<{
     binary: string;
     result: CheckResult;
@@ -75,9 +75,23 @@ function App() {
   const closingRef = useRef(false);
   const [closing, setClosing] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [page, setPage] = useState<Page>('overview');
+  const [page, setPageRaw] = useState<Page>('overview');
+  const feishuLeave = useRef<(() => Promise<void>) | null>(null);
+  function setPage(next: Page) {
+    if (next === page) return;
+    const leave = page === 'feishu' ? feishuLeave.current : null;
+    if (leave)
+      leave()
+        .then(() => setPageRaw(next))
+        .catch((error) =>
+          setNotice({
+            text: error instanceof Error ? error.message : '请先保存飞书进度',
+            error: true,
+          }),
+        );
+    else setPageRaw(next);
+  }
   const contentRef = useRef<HTMLDivElement>(null);
-  const [step, setStep] = useState(0);
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState<FeedbackNotice | null>(null);
   const dismissNotice = useCallback(() => setNotice(null), []);
@@ -134,6 +148,7 @@ function App() {
       closingRef.current = true;
       setClosing(true);
       await loading;
+      await feishuLeave.current?.();
       await cache.current?.flush();
     });
     const cancelled = api.onCloseCancelled(() => {
@@ -331,11 +346,11 @@ function App() {
     };
   }, [loaded, refreshProjects]);
   useEffect(() => {
-    if (page === 'projects' || (page === 'setup' && step === 2)) refreshProjects().catch(() => {});
-  }, [page, step, refreshProjects]);
+    if (page === 'projects' || page === 'setup') refreshProjects().catch(() => {});
+  }, [page, refreshProjects]);
   useEffect(() => {
     contentRef.current?.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-  }, [page, step]);
+  }, [page]);
   const stopped = snapshot?.status.phase === 'stopped';
   const active = snapshot && snapshot.status.phase !== 'stopped';
   const inform = (text: string) => setNotice({ text, error: false });
@@ -422,18 +437,6 @@ function App() {
               <button
                 className="text-button"
                 onClick={() => {
-                  setStep(
-                    !snapshot.configured
-                      ? !settings.codexBinary.trim()
-                        ? 0
-                        : Object.values(settings.feishu).some((value) => !value.trim()) ||
-                            (!snapshot.hasSecret && !secret.trim())
-                          ? 1
-                          : noProjects && !settings.remoteProjectCreation.enabled
-                            ? 2
-                            : 3
-                      : 3,
-                  );
                   setPage('setup');
                 }}
               >
@@ -446,10 +449,7 @@ function App() {
               </button>
             )}
             {!busy && noProjects && (
-              <button
-                className="text-button"
-                onClick={() => (inWizard ? setStep(2) : setPage('projects'))}
-              >
+              <button className="text-button" onClick={() => setPage('projects')}>
                 添加本地项目 <Icon name="arrow" />
               </button>
             )}
@@ -506,108 +506,33 @@ function App() {
     );
   }
   function feishuForm() {
-    if (!settings) return null;
-    const fields: {
-      key: keyof DesktopSettings['feishu'];
-      label: string;
-      placeholder: string;
-      hint: string;
-    }[] = [
-      {
-        key: 'appId',
-        label: 'App ID',
-        placeholder: 'cli_…',
-        hint: '飞书开放平台 → 凭证与基础信息',
-      },
-      {
-        key: 'tenantKey',
-        label: 'Tenant Key',
-        placeholder: '企业标识',
-        hint: '机器人所属企业的 tenant_key',
-      },
-      {
-        key: 'allowedOpenId',
-        label: '允许使用的用户',
-        placeholder: 'ou_…',
-        hint: '只接受此用户的消息与卡片操作',
-      },
-      {
-        key: 'testChatId',
-        label: '机器人单聊',
-        placeholder: 'oc_…',
-        hint: '任务结果将发送到此专用单聊',
-      },
-    ];
-    const field = (entry: (typeof fields)[number]) => (
-      <label className="field" key={entry.key}>
-        <span>{entry.label}</span>
-        <TextInput
-          spellCheck={false}
-          placeholder={entry.placeholder}
-          value={settings.feishu[entry.key]}
-          onChange={(event) =>
-            update({ ...settings, feishu: { ...settings.feishu, [entry.key]: event.target.value } })
-          }
-        />
-        <small>{entry.hint}</small>
-      </label>
-    );
-    const credentials = (
-      <div className="form-grid">
-        {fields.filter((item) => item.key === 'appId').map(field)}
-        <label className="field">
-          <span>App Secret</span>
-          <TextInput
-            type="password"
-            autoComplete="new-password"
-            placeholder={snapshot?.hasSecret ? '已保存；留空保持原值' : '填写应用密钥'}
-            value={secret}
-            onChange={(event) => {
-              if (closingRef.current) return;
-              secretRef.current = event.target.value;
-              setSecret(event.target.value);
-              editorRevision.current =
-                cache.current?.update(settings, event.target.value) ?? editorRevision.current;
-              setDirty(true);
-            }}
-          />
-          <small>由 macOS Keychain 保护，已保存的密钥不会回显。</small>
-        </label>
-      </div>
-    );
+    if (!settings || !snapshot) return null;
     return (
       <FeishuConnection
         api={api}
-        settings={settings}
-        configured={!!snapshot?.configured}
+        settings={snapshot.activeSettings ?? settings}
+        configured={snapshot.configured}
         stopped={!!stopped}
-        credentials={credentials}
-        identity={
-          <div className="form-grid">
-            {fields.filter((item) => item.key !== 'appId').map(field)}
-          </div>
-        }
-        notify={(text, error = false) => setNotice({ text, error, source: 'feishu' })}
-        onFlush={async () => {
-          await cache.current?.flush();
+        status={snapshot.status}
+        hasOtherDraft={snapshot.hasDraft}
+        registerLeave={(leave) => {
+          feishuLeave.current = leave;
         }}
-        onMerge={async () => {
-          if (!cache.current) return;
-          const merged = await cache.current.mergeFeishu(async () => {
-            const current = await api.load();
-            return api.mergeFeishuSetup(current.revision ?? null);
-          });
-          editorRevision.current = merged.revision;
-          settingsRef.current = merged.snapshot.settings;
-          setSettings(merged.snapshot.settings);
-          setSnapshot(merged.snapshot);
+        notify={(text, error = false) => setNotice({ text, error, source: 'feishu' })}
+        onStop={async () => {
+          const status = await api.stop();
+          setSnapshot((current) => (current ? { ...current, status } : current));
+        }}
+        onApply={async (revision) => {
+          if (!cache.current) throw new Error('配置缓存尚未就绪');
+          const result = await cache.current.applyFeishu(() => api.applyFeishuSetup(revision));
+          editorRevision.current = result.revision;
+          settingsRef.current = result.snapshot.settings;
+          setSettings(result.snapshot.settings);
+          setSnapshot(result.snapshot);
           secretRef.current = '';
           setSecret('');
           setDirty(false);
-        }}
-        onComplete={async () => {
-          await cache.current?.apply();
-          setPage('overview');
         }}
       />
     );
@@ -1022,8 +947,9 @@ function App() {
         <div className="page-title">
           <span className="eyebrow">APP PREFERENCES</span>
           <h1>应用设置</h1>
-          <p>这台 Mac 上的启动与退出行为。</p>
+          <p>管理 Codex 环境，以及这台 Mac 上的启动与退出行为。</p>
         </div>
+        {codexForm()}
         <section className="panel">
           <div className="section-heading split">
             <div>
@@ -1292,69 +1218,54 @@ function App() {
       <>
         <div className="page-title">
           <span className="eyebrow">GETTING STARTED</span>
-          <h1>建立你的连接</h1>
-          <p>四个步骤，让飞书与本机 Codex 协同工作。</p>
+          <h1>准备好你的工作台</h1>
+          <p>分别完成下面的准备事项，随时离开，进度会保存在本机。</p>
         </div>
-        <div className="wizard-steps">
-          {['Codex', '飞书连接', '本地项目', '检查与启动'].map((label, i) => (
-            <button
-              key={label}
-              className={step === i ? 'selected' : ''}
-              aria-current={step === i ? 'step' : undefined}
-              onClick={() => setStep(i)}
-            >
-              <span>{i + 1}</span>
-              {label}
+        <div className="setup-checklist">
+          {(
+            [
+              [
+                'preferences',
+                'Codex 环境',
+                settings?.codexBinary ? '已识别路径 · 启动时校验运行环境' : '需要选择 Codex',
+                '选择本机 Codex，检查版本与协议。',
+              ],
+              [
+                'feishu',
+                '飞书连接',
+                snapshot?.configured ? '配置已保存' : '尚未完成接入',
+                '创建或连接机器人，绑定你的专用单聊。',
+              ],
+              [
+                'projects',
+                '本地项目',
+                '可选',
+                '需要处理文件时再添加项目；也可以先使用无项目对话。',
+              ],
+            ] as const
+          ).map(([target, title, state, description], index) => (
+            <button className="setup-checklist-item" key={target} onClick={() => setPage(target)}>
+              <span className="setup-index">0{index + 1}</span>
+              <div>
+                <h2>{title}</h2>
+                <p>{description}</p>
+                <small>{state}</small>
+              </div>
+              <Icon name="arrow" />
             </button>
           ))}
         </div>
-        {step === 0 ? (
-          codexForm()
-        ) : step === 1 ? (
-          feishuForm()
-        ) : step === 2 ? (
-          projectsForm()
-        ) : (
-          <section className="panel">
-            <span className="eyebrow">READY TO CONNECT</span>
-            <h2>准备好建立连接</h2>
-            <p>应用配置后，点击启动。只有飞书长连接与 Codex 后端都就绪时才显示“已连接”。</p>
-            <dl className="review">
-              <div>
-                <dt>机器人</dt>
-                <dd>{settings?.feishu.appId || '未填写'}</dd>
-              </div>
-              <div>
-                <dt>本地项目</dt>
-                <dd>{settings?.projects.length ?? 0} 个</dd>
-              </div>
-              <div>
-                <dt>退出行为</dt>
-                <dd>停止飞书任务与连接，Codex 桌面任务继续</dd>
-              </div>
-            </dl>
-            <div className="action-row">
-              {button('应用配置', () => save(true), true, !stopped)}
-              {startButton(false)}
-            </div>
-            {connectionHint(true)}
-          </section>
-        )}
-        <div className="wizard-bottom">
-          <button
-            className="text-button"
-            disabled={step === 0}
-            onClick={() => setStep((i) => i - 1)}
-          >
-            上一步
-          </button>
-          {button('立即保存', () => save(false))}
-          {step < 3 && (
-            <button className="button primary" onClick={() => setStep((i) => i + 1)}>
-              下一步 <Icon name="arrow" />
+        <section className="panel setup-ready">
+          <h2>完成准备后，手动启动连接</h2>
+          <p>飞书配置单独保存。项目权限等其他修改仍需在对应页面应用，启动时还会核对必要条件。</p>
+          <div className="action-row">
+            {startButton(false)}
+            <button className="text-button" onClick={() => setPage('overview')}>
+              返回总览
             </button>
-          )}
-        </div>
+          </div>
+          {connectionHint(false)}
+        </section>
       </>
     );
   }
@@ -1418,7 +1329,7 @@ function App() {
           onClick={() => setPage('setup')}
         >
           <Icon name="setup" />
-          配置向导
+          准备清单
         </button>
         <div className="sidebar-bottom">
           <span className="local-badge">
@@ -1466,17 +1377,7 @@ function App() {
               {page === 'overview' && overview()}
               {page === 'preferences' && preferences()}
               {page === 'setup' && setup()}
-              {page === 'feishu' && (
-                <>
-                  <div className="page-title">
-                    <span className="eyebrow">CONNECTION SETTINGS</span>
-                    <h1>飞书连接</h1>
-                    <p>管理机器人身份与本机 Codex，建立可靠的消息通道。</p>
-                  </div>
-                  {feishuForm()}
-                  {codexForm()}
-                </>
-              )}
+              {page === 'feishu' && <>{feishuForm()}</>}
               {page === 'projects' && (
                 <>
                   <div className="page-title">
@@ -1527,7 +1428,7 @@ function App() {
             </div>
           )}
         </div>
-        {settings && snapshot && (page === 'projects' || page === 'feishu') && (
+        {settings && snapshot && (page === 'projects' || page === 'preferences') && (
           <div className="save-bar">
             <span>
               {active ? '配置自动缓存到本机；停止服务后应用。' : '配置自动缓存到本机，应用后生效。'}

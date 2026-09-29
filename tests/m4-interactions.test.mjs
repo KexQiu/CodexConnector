@@ -354,6 +354,10 @@ describe('M4 actual SQLite, WebSocket RPC and Feishu business routing; simulated
     await worker.tickInteractions();
     await wait(() => replies.length === 1);
     expect(replies[0].result).toEqual({ decision: 'accept' });
+    // Receiving the reply on the fixture server precedes processing its resolved notification.
+    await wait(
+      () => rows().find((value) => value.approval_id === row.approval_id)?.state === 'resolved',
+    );
     expect(inbox.receive('action', callback(action.nonce, action.message_id)).outcome).toBe(
       'expired-or-invalid',
     );

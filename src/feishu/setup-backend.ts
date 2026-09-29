@@ -36,6 +36,7 @@ export const setupBackendInput = z.discriminatedUnion('kind', [
     operationId: z.string().uuid(),
     credentials: appIdentitySchema,
     scannerOpenId: z.string().optional(),
+    reuseSetup: z.boolean().default(false),
   }),
   z.object({
     kind: z.literal('check'),
@@ -48,7 +49,8 @@ export type SetupProgressValue =
   | { kind: 'qr'; url: string; expiresAt: number }
   | { kind: 'status'; message: string }
   | { kind: 'binding'; text: string; expiresAt: number }
-  | { kind: 'connected'; connected: boolean };
+  | { kind: 'connected'; connected: boolean }
+  | { kind: 'session-closed' };
 export type SetupProgress = SetupProgressValue & { operationId: string };
 export function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -107,6 +109,84 @@ export function acceptBinding(
 
 /** No task store, Codex transport, outbound messages or cards are constructed here. */
 export class FeishuSetupBackend {
+  private session:
+    | {
+        id: string;
+        credentials: z.infer<typeof appIdentitySchema>;
+        expiresAt: number;
+        connected: boolean;
+        close: () => void;
+        timer: ReturnType<typeof setTimeout>;
+        binding?: {
+          command: string;
+          expiresAt: number;
+          scannerOpenId?: string;
+          accept: (value: FeishuBinding) => void;
+        };
+      }
+    | undefined;
+  openSession(raw: unknown) {
+    const input = z
+      .object({ operationId: z.string().uuid(), credentials: appIdentitySchema })
+      .parse(raw);
+    if (
+      this.session &&
+      JSON.stringify(this.session.credentials) === JSON.stringify(input.credentials)
+    )
+      return {
+        expiresAt: this.session.expiresAt,
+        connected: this.session.connected,
+        operationId: this.session.id,
+      };
+    if (this.current) throw new Error('请先结束当前配置操作');
+    this.closeSession();
+    const expiresAt = Date.now() + 30 * 60_000;
+    const session: NonNullable<FeishuSetupBackend['session']> = (this.session = {
+      id: input.operationId,
+      credentials: input.credentials,
+      expiresAt,
+      connected: false,
+      close: () => {},
+      timer: setTimeout(() => this.closeSession(), 30 * 60_000),
+    });
+    const dispatcher = new EventDispatcher({ logger: silentLogger }).register({
+      'im.message.receive_v1': (raw: unknown) => {
+        const binding = this.session?.binding;
+        if (this.session !== session || !binding) return;
+        const accepted = acceptBinding(
+          raw,
+          input.credentials.appId,
+          binding.command,
+          binding.expiresAt,
+          binding.scannerOpenId,
+        );
+        if (accepted) {
+          delete this.session.binding;
+          binding.accept(accepted);
+        }
+      },
+    });
+    try {
+      session.close = this.socket(input.credentials, dispatcher, (event) => {
+        if (this.session !== session) return;
+        if (event.kind === 'connected') session.connected = event.connected;
+        this.progress({ ...event, operationId: session.id });
+      });
+    } catch (error) {
+      this.closeSession();
+      throw error;
+    }
+    return { expiresAt, connected: session.connected, operationId: session.id };
+  }
+  closeSession() {
+    const session = this.session;
+    this.session = undefined;
+    if (!session) return;
+    clearTimeout(session.timer);
+    session.close();
+    this.progress({ kind: 'session-closed', operationId: session.id });
+    if (session.binding) this.current?.controller.abort();
+  }
   private current: { id: string; controller: AbortController; done: Promise<unknown> } | undefined;
   constructor(
     private readonly progress: (value: SetupProgress) => void,
@@ -138,10 +218,11 @@ export class FeishuSetupBackend {
     this.current = { id: input.operationId, controller, done };
     return done;
   }
-  async cancel() {
+  async cancel(closeSession = true) {
     const current = this.current;
     current?.controller.abort();
     await current?.done.catch(() => {});
+    if (closeSession) this.closeSession();
   }
   private async perform(
     input: z.infer<typeof setupBackendInput>,
@@ -150,6 +231,7 @@ export class FeishuSetupBackend {
   ): Promise<unknown> {
     const signal = controller.signal;
     if (input.kind === 'register') {
+      this.closeSession();
       if (input.mode === 'existing' && !input.appId) throw new Error('请选择需要补配的 App ID');
       const release = input.appId ? acquireFeishuSetupLock(input.appId) : undefined;
       let regionalMismatch = false;
@@ -248,7 +330,24 @@ export class FeishuSetupBackend {
         },
       });
       emit({ kind: 'binding', text: command, expiresAt });
-      const close = this.socket(input.credentials, dispatcher, emit);
+      const session = input.reuseSetup ? this.session : undefined;
+      if (
+        input.reuseSetup &&
+        (!session || JSON.stringify(session.credentials) !== JSON.stringify(input.credentials))
+      )
+        throw new Error('配置连接已失效，请重新连接');
+      if (session)
+        session.binding = {
+          command,
+          expiresAt,
+          accept,
+          ...(input.scannerOpenId ? { scannerOpenId: input.scannerOpenId } : {}),
+        };
+      const close = session
+        ? () => {
+            delete session.binding;
+          }
+        : this.socket(input.credentials, dispatcher, emit);
       try {
         return await abortable(result, signal);
       } finally {
@@ -283,8 +382,33 @@ export class FeishuSetupBackend {
       }
       if (!signal.aborted) {
         try {
+          let reusedSetup = false;
           if (input.reuseConnection) {
             if (!this.connected()) throw new Error('连接不在线');
+          } else if (
+            this.session &&
+            JSON.stringify(this.session.credentials) ===
+              JSON.stringify({
+                appId: input.credentials.appId,
+                appSecret: input.credentials.appSecret,
+              })
+          ) {
+            reusedSetup = true;
+            const session = this.session;
+            await abortable(
+              new Promise<void>((resolve, reject) => {
+                const poll = setInterval(() => {
+                  if (this.session !== session || signal.aborted) {
+                    clearInterval(poll);
+                    reject(new Error('配置连接已关闭'));
+                  } else if (session.connected) {
+                    clearInterval(poll);
+                    resolve();
+                  }
+                }, 50);
+              }),
+              signal,
+            );
           } else {
             let ready!: () => void;
             const wait = new Promise<void>((resolve) => {
@@ -305,7 +429,11 @@ export class FeishuSetupBackend {
           }
           result.websocket = {
             status: 'passed',
-            message: input.reuseConnection ? '已复用当前在线长连接' : '临时长连接握手成功，已关闭',
+            message: input.reuseConnection
+              ? '已复用当前在线长连接'
+              : reusedSetup
+                ? '已复用配置长连接，保存或离开配置时关闭'
+                : '临时长连接握手成功，已关闭',
           };
         } catch (error) {
           fail('websocket', error);

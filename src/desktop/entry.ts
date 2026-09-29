@@ -44,6 +44,10 @@ async function dispatch(method: string, args: unknown): Promise<unknown> {
   switch (method) {
     case 'setupRun':
       return setup.run(args);
+    case 'setupConnect':
+      return setup.openSession(args);
+    case 'setupPauseBinding':
+      return setup.cancel(false);
     case 'setupCancel':
       return setup.cancel();
     case 'initialize':
@@ -163,7 +167,8 @@ process.on('message', (raw) => {
       });
     }
   };
-  if (method === 'setupRun' || method === 'setupCancel') run().catch(() => {});
+  if (['setupRun', 'setupCancel', 'setupConnect', 'setupPauseBinding'].includes(method))
+    run().catch(() => {});
   else queue = queue.then(run);
 });
 const quit = () => {

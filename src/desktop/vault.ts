@@ -38,8 +38,59 @@ export class DesktopVault {
     private readonly cipher: SecretCipher,
   ) {
     privateDirectory(root);
+    this.recoverFeishuCommit();
+  }
+  private recoverFeishuCommit() {
+    const path = join(this.root, 'feishu-commit.json');
+    if (!existsSync(path)) return;
+    const commit = z
+      .object({ version: z.literal(1), active: recordSchema, draft: recordSchema.nullable() })
+      .parse(JSON.parse(readPrivate(path)));
+    for (const record of [commit.active, commit.draft])
+      if (record && record.profileId !== profileId(record.settings))
+        throw new Error('配置提交身份校验失败');
+    privateDirectory(this.dataDir(commit.active));
+    writeJson(join(this.root, 'active.json'), commit.active);
+    const draftPath = join(this.root, 'draft.json');
+    if (commit.draft) writeJson(draftPath, commit.draft);
+    else if (existsSync(draftPath)) unlinkSync(draftPath);
+    unlinkSync(path);
+  }
+  applyFeishu(
+    fields: DesktopSettings['feishu'],
+    encryptedSecret: string,
+    defaults = defaultSettings(),
+  ) {
+    this.recoverFeishuCommit();
+    const active = this.read('active');
+    const draft = this.read('draft');
+    const make = (settings: DesktopSettings): DesktopRecord => {
+      const next = { ...settings, feishu: fields };
+      const identity = profileId(next);
+      return {
+        version: 1,
+        revision: randomUUID(),
+        profileId: identity,
+        settings: next,
+        encryptedSecret,
+        ...(active?.legacy && active.profileId === identity ? { legacy: active.legacy } : {}),
+      };
+    };
+    const next = make(active?.settings ?? defaults);
+    const rebased = draft ? make(draft.settings) : null;
+    // Write-ahead record makes the active/draft pair recoverable after interruption.
+    writeJson(join(this.root, 'feishu-commit.json'), {
+      version: 1,
+      active: next,
+      draft:
+        rebased && JSON.stringify(rebased.settings) !== JSON.stringify(next.settings)
+          ? rebased
+          : null,
+    });
+    this.recoverFeishuCommit();
   }
   read(kind: 'active' | 'draft'): DesktopRecord | null {
+    this.recoverFeishuCommit();
     const path = join(this.root, `${kind}.json`);
     if (!existsSync(path)) return null;
     const record = recordSchema.parse(JSON.parse(readPrivate(path)));
@@ -93,6 +144,7 @@ export class DesktopVault {
     };
   }
   write(kind: 'active' | 'draft', record: DesktopRecord) {
+    this.recoverFeishuCommit();
     const parsed = recordSchema.parse(record);
     if (kind === 'active') privateDirectory(this.dataDir(parsed));
     // Config and encrypted secret share one atomic snapshot; no half-written reference.

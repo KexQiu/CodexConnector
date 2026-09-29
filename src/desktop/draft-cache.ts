@@ -82,6 +82,31 @@ export class DesktopDraftCache {
     });
   }
 
+  applyFeishu(
+    operation: () => Promise<DesktopSnapshot>,
+  ): Promise<{ snapshot: DesktopSnapshot; revision: number }> {
+    this.clearTimer();
+    return this.enqueue(async () => {
+      await this.writePending();
+      const before = this.current.revision;
+      let snapshot = await operation();
+      const concurrent = this.current.revision !== before;
+      this.current = {
+        settings: { ...this.current.settings, feishu: snapshot.settings.feishu },
+        secret: '',
+        revision: this.current.revision + 1,
+      };
+      this.cachedSecret = undefined;
+      if (concurrent) snapshot = await this.api.saveDraft(this.current.settings, '');
+      this.savedRevision = this.current.revision;
+      if (!this.disposed) this.notify('saved');
+      return {
+        snapshot: { ...snapshot, settings: this.current.settings },
+        revision: this.current.revision,
+      };
+    });
+  }
+
   mergeFeishu(
     operation: () => Promise<DesktopSnapshot>,
   ): Promise<{ snapshot: DesktopSnapshot; revision: number }> {

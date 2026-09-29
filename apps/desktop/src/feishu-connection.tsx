@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import qrcode from 'qrcode-generator';
-import type { DesktopApi, DesktopSettings } from '../../../src/desktop/contracts.js';
+import type { DesktopApi, DesktopSettings, DesktopStatus } from '../../../src/desktop/contracts.js';
 import {
   FEISHU_SETUP_MANIFEST,
   type FeishuSetupAction,
@@ -46,7 +46,7 @@ const lessons: {
     title: '事件与卡片回调',
     route: ['事件与回调', '事件配置 / 回调配置', '使用长连接接收'],
     instruction:
-      '先点击本页“绑定单聊”保持配置连接在线，再到平台保存长连接设置。消息事件添加 im.message.receive_v1；回调添加 card.action.trigger。两个配置页都需要核对。已有 Webhook 应用请先确认切换影响，手动切换后再继续。',
+      '在“完成飞书设置”步骤保持配置连接在线，再到平台保存长连接设置。消息事件添加 im.message.receive_v1；回调添加 card.action.trigger。两个配置页都需要核对。已有 Webhook 应用请先确认切换影响，手动切换后再继续。',
     done: '消息事件、卡片回调均已添加，接收方式均为长连接。',
     entry: 'events',
     copy: 'events',
@@ -63,8 +63,8 @@ const lessons: {
     title: '绑定机器人单聊',
     route: ['在飞书打开机器人', '发送本页绑定指令', '返回本机确认'],
     instruction:
-      '打开机器人单聊，复制本页生成的绑定指令并发送。指令 5 分钟内有效，只接受用户单聊；若没有扫码账号信息，还需在本机确认候选账号。也可以在高级配置手填三个身份字段。',
-    done: '本页显示绑定完成，核对账号及会话后保存到草稿。',
+      '打开机器人单聊，复制本页生成的绑定指令并发送。指令 5 分钟内有效，只接受用户单聊；若没有扫码账号信息，还需在本机确认候选账号。也可以在绑定步骤手动填写三个身份字段。',
+    done: '本页显示绑定完成，核对账号及会话后进入“检查并保存”。',
     entry: 'console',
   },
 ];
@@ -73,64 +73,219 @@ type Props = {
   settings: DesktopSettings;
   configured: boolean;
   stopped: boolean;
-  credentials: ReactNode;
-  identity: ReactNode;
-  onFlush: () => Promise<void>;
-  onMerge: () => Promise<void>;
-  onComplete: () => Promise<void>;
+  status: DesktopStatus;
+  hasOtherDraft: boolean;
+  onApply: (revision: string) => Promise<void>;
+  onStop: () => Promise<void>;
+  registerLeave: (leave: (() => Promise<void>) | null) => void;
   notify: (text: string, error?: boolean) => void;
 };
+const titles = ['接入机器人', '完成飞书设置', '绑定单聊', '检查并保存'];
+const emptyFields = { appId: '', tenantKey: '', allowedOpenId: '', testChatId: '' };
 export function FeishuConnection(props: Props) {
-  const { api, settings, configured, stopped, notify } = props;
-  const [mode, setMode] = useState<'summary' | 'create' | 'existing' | 'manual'>(
-    configured ? 'summary' : 'create',
-  );
+  const { api } = props;
+  const propsRef = useRef(props);
+  propsRef.current = props;
   const [state, setState] = useState<FeishuSetupState | null>(null);
+  const stateRef = useRef(state);
+  const [view, setView] = useState<'manage' | 'choose' | 'flow'>(
+    props.configured ? 'manage' : 'choose',
+  );
+  const [fields, setFields] = useState(emptyFields);
+  const [secret, setSecret] = useState('');
   const [name, setName] = useState('CodexConnector');
-  const [tutorial, setTutorial] = useState(false);
-  const [working, setWorking] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [cached, setCached] = useState(true);
+  const [manual, setManual] = useState(false);
+  const [help, setHelp] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [savedNotice, setSavedNotice] = useState('');
+  const editor = useRef({
+    fields: emptyFields,
+    name: 'CodexConnector',
+    secret: '',
+    version: 0,
+    saved: 0,
+  });
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const saveAfterCheck = useRef(false);
+  const qrContainer = useRef<HTMLDivElement>(null);
+  const bindingContainer = useRef<HTMLDivElement>(null);
+  const lastFeedback = useRef('');
+  const checkResults = useRef<HTMLDivElement>(null);
+  const mounted = useRef(true);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const accept = (next: FeishuSetupState) => {
+    stateRef.current = next;
+    if (!mounted.current) return;
+    setState(next);
+    if (next.draft && editor.current.saved === editor.current.version) {
+      editor.current = {
+        ...editor.current,
+        fields: next.draft.fields,
+        name: next.draft.name,
+        secret: '',
+      };
+      setFields(next.draft.fields);
+      setName(next.draft.name);
+      setSecret('');
+    }
+  };
+  const report = (cause: unknown) => {
+    const text = cause instanceof Error ? cause.message : '操作未完成，请重试';
+    if (mounted.current) {
+      setError(text);
+      setBusy(false);
+    }
+    propsRef.current.notify(text, true);
+  };
+  const flush = () => {
+    clearTimeout(timer.current);
+    const operation = queue.current.then(async () => {
+      while (editor.current.saved < editor.current.version) {
+        const draft = stateRef.current?.draft;
+        if (!draft) throw new Error('配置进度暂不可用，请重新打开页面');
+        const value = { ...editor.current };
+        const next = await api.feishuSetup({
+          kind: 'edit',
+          revision: draft.revision,
+          fields: value.fields,
+          name: value.name,
+          secret: value.secret,
+        });
+        editor.current.saved = value.version;
+        accept(next);
+      }
+      if (mounted.current) setCached(true);
+    });
+    queue.current = operation.catch(() => {});
+    return operation;
+  };
+  const change = (patch: Partial<Pick<typeof editor.current, 'fields' | 'name' | 'secret'>>) => {
+    editor.current = { ...editor.current, ...patch, version: editor.current.version + 1 };
+    setFields(editor.current.fields);
+    setName(editor.current.name);
+    setSecret(editor.current.secret);
+    setCached(false);
+    setError('');
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      flush().catch(report);
+    }, 500);
+  };
+  const run = (operation: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(true);
+    setError('');
+    operation()
+      .catch(report)
+      .finally(() => {
+        if (mounted.current) setBusy(false);
+      });
+  };
+  const act = async (action: FeishuSetupAction) => {
+    const next = await api.feishuSetup(action);
+    accept(next);
+    return next;
+  };
+  const leave = async () => {
+    saveAfterCheck.current = false;
+    await flush();
+    await act({ kind: 'suspend' });
+  };
   useEffect(() => {
-    let live = true;
+    mounted.current = true;
     api
       .feishuSetup({ kind: 'load' })
       .then((next) => {
-        if (live) setState(next);
+        accept(next);
+        if (next.draft && !propsRef.current.configured) setView('flow');
       })
-      .catch(() => {});
-    const off = api.onFeishuSetup(setState);
-    const timer = setInterval(() => setNow(Date.now()), 1000);
+      .catch(report);
+    const off = api.onFeishuSetup(accept);
+    propsRef.current.registerLeave(leave);
+    const clock = setInterval(() => setNow(Date.now()), 1000);
     return () => {
-      live = false;
+      mounted.current = false;
+      clearTimeout(timer.current);
+      clearInterval(clock);
       off();
-      clearInterval(timer);
+      propsRef.current.registerLeave(null);
     };
   }, [api]);
-  const qrRef = useRef<HTMLDivElement>(null);
-  const bindingRef = useRef<HTMLDivElement>(null);
-  const checkRef = useRef<HTMLDivElement>(null);
-  const lastFeedback = useRef('');
+  const step = state?.draft?.step ?? 1;
   useEffect(() => {
-    const target = state?.qr
-      ? qrRef.current
-      : state?.bindingCommand
-        ? bindingRef.current
-        : state?.phase === 'checking' || state?.phase === 'complete'
-          ? checkRef.current
-          : null;
-    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [state?.qr?.url, state?.bindingCommand?.text, state?.phase]);
+    heading.current?.focus();
+  }, [view, step]);
   useEffect(() => {
-    if (!state || !['complete', 'error', 'expired'].includes(state.phase)) return;
+    if (
+      view === 'flow' &&
+      (step === 2 || step === 3) &&
+      props.stopped &&
+      !stateRef.current?.connectionExpiresAt
+    )
+      api.feishuSetup({ kind: 'connect' }).then(accept).catch(report);
+  }, [view, step, props.stopped]);
+  useEffect(() => {
+    if (state?.bindingCommand)
+      bindingContainer.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [state?.bindingCommand?.text]);
+  useEffect(() => {
+    if (
+      !state ||
+      (!['error', 'expired'].includes(state.phase) &&
+        !(state.phase === 'complete' && state.check.status === 'failed'))
+    )
+      return;
     const key = `${state.phase}:${state.message}:${state.check.checkedAt}`;
-    if (lastFeedback.current === key) return;
-    lastFeedback.current = key;
-    notify(
-      state.message,
-      state.phase === 'error' || state.phase === 'expired' || state.check.status === 'failed',
-    );
-  }, [state, notify]);
+    if (lastFeedback.current !== key) {
+      lastFeedback.current = key;
+      propsRef.current.notify(state.message || '基础检查未通过，请查看具体结果', true);
+    }
+  }, [state?.phase, state?.message, state?.check.checkedAt]);
+  useEffect(() => {
+    if (state?.phase === 'checking' || state?.check.status === 'failed')
+      checkResults.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [state?.phase === 'checking', state?.check.checkedAt]);
+  const commit = async () => {
+    const revision = stateRef.current?.draft?.revision;
+    if (!revision) throw new Error('配置进度丢失，请重新打开');
+    await propsRef.current.onApply(revision);
+    accept(await api.feishuSetup({ kind: 'load' }));
+    setView('manage');
+    setSavedNotice('飞书配置已保存，连接仍需手动启动。');
+    propsRef.current.notify('飞书配置已保存');
+  };
+  useEffect(() => {
+    if (!saveAfterCheck.current || state?.operationId || state?.phase !== 'complete') return;
+    saveAfterCheck.current = false;
+    if (state.check.status === 'passed') run(commit);
+  }, [state?.operationId, state?.phase, state?.check.status]);
+  const begin = (
+    mode: 'create' | 'existing',
+    intent: 'replace' | 'credentials' | 'binding' | 'resume',
+  ) =>
+    run(async () => {
+      await flush();
+      await act({ kind: 'begin', mode, intent });
+      setView('flow');
+      setSavedNotice('');
+      setManual(false);
+    });
+  const advance = (target: number) =>
+    run(async () => {
+      await flush();
+      await act({ kind: 'step', step: target });
+      setManual(false);
+    });
+  const copy = (item: 'permissions' | 'events' | 'binding') =>
+    run(async () => {
+      await api.copyFeishu(item);
+      propsRef.current.notify('已复制到剪贴板');
+    });
+  const open = (entry: OfficialEntry) => run(() => api.openFeishu(entry));
   const qr = useMemo(() => {
     if (!state?.qr) return null;
     const code = qrcode(0, 'M');
@@ -138,496 +293,771 @@ export function FeishuConnection(props: Props) {
     code.make();
     return code.createDataURL(4, 16);
   }, [state?.qr?.url]);
-  const perform = (operation: () => Promise<void>) => {
-    if (working) return;
-    setWorking(true);
-    setError('');
-    operation()
-      .catch((cause: unknown) => {
-        const message = cause instanceof Error ? cause.message : '操作未完成，请重试。';
-        setError(message);
-        notify(message, true);
-      })
-      .finally(() => setWorking(false));
-  };
-  const action = (value: FeishuSetupAction) =>
-    perform(async () => {
-      if (!['cancel', 'skip', 'load', 'tutorial', 'confirm'].includes(value.kind))
-        await props.onFlush();
-      const next = await api.feishuSetup(value);
-      setState(next);
-    });
-  const open = (entry: OfficialEntry) => perform(() => api.openFeishu(entry));
-  const copy = (item: 'permissions' | 'events' | 'binding') =>
-    perform(async () => {
-      await api.copyFeishu(item);
-      notify('已复制到剪贴板');
-    });
+  const expires = state?.qr?.expiresAt ?? state?.bindingCommand?.expiresAt;
+  const seconds = Math.max(0, Math.ceil(((expires ?? now) - now) / 1000));
+  const draft = state?.draft;
   const running = !!state?.operationId;
-  const disabled = working || running;
-  const complete = Object.values(settings.feishu).every(Boolean);
-  const hasBinding = state?.hasPending
-    ? state.phase === 'bound' || (state.appId === settings.feishu.appId && complete)
-    : complete;
-  const remaining = Math.max(
-    0,
-    Math.floor(((state?.qr?.expiresAt ?? state?.bindingCommand?.expiresAt ?? now) - now) / 1000),
-  );
-  const summary =
+  const bound = !!fields.tenantKey && !!fields.allowedOpenId && !!fields.testChatId;
+  const checkLabel =
     state?.check.status === 'passed'
-      ? '基础连接检查通过'
+      ? '基础检查通过'
       : state?.check.status === 'failed'
-        ? '基础连接检查未通过'
+        ? '基础检查未通过'
         : state?.check.status === 'changed'
           ? '配置已变更，待验证'
-          : state?.phase === 'checking'
-            ? '正在检查连接…'
-            : '配置已保存，未验证';
-  return (
-    <section className="panel feishu-onboarding">
-      <div className="onboarding-heading">
-        <div>
-          <span className="eyebrow">FEISHU · CONNECT</span>
-          <h2>让飞书成为你的工作入口</h2>
-          <p>连接一个机器人，在手机上继续与 Codex 对话。</p>
+          : '尚未验证';
+  const input = (key: keyof typeof fields, label: string, placeholder: string) => (
+    <label className="field" key={key}>
+      <span>{label}</span>
+      <TextInput
+        value={fields[key]}
+        placeholder={placeholder}
+        spellCheck={false}
+        disabled={busy || running || !!state?.connectionExpiresAt}
+        onChange={(event) =>
+          change({ fields: { ...editor.current.fields, [key]: event.target.value } })
+        }
+      />
+    </label>
+  );
+  const details = (
+    <div className="flow-check-results" ref={checkResults}>
+      {(['credentials', 'history', 'websocket'] as const).map((key) => (
+        <div key={key}>
+          <Icon
+            name={
+              state?.check[key].status === 'passed'
+                ? 'check'
+                : state?.check[key].status === 'failed'
+                  ? 'alert'
+                  : 'activity'
+            }
+          />
+          <strong>
+            {{ credentials: '应用凭据', history: '历史读取', websocket: '长连接' }[key]}
+          </strong>
+          <span>{state?.check[key].message ?? '尚未检查'}</span>
         </div>
-        <span className="onboarding-private">
-          <Icon name="shield" />
-          仅保存在本机
-        </span>
+      ))}
+    </div>
+  );
+  const lesson = (index: number) => {
+    const item = lessons[index]!;
+    return (
+      <div className="flow-lesson" key={index}>
+        <h3>{item.title}</h3>
+        <div className="tutorial-diagram">
+          {item.route.map((label) => (
+            <span key={label}>{label}</span>
+          ))}
+        </div>
+        <p>{item.instruction}</p>
+        {index === 2 && (
+          <pre>{JSON.stringify({ scopes: FEISHU_SETUP_MANIFEST.scopes }, null, 2)}</pre>
+        )}
+        {index === 3 && <code>im.message.receive_v1 / card.action.trigger</code>}
+        <small>完成标准：{item.done}</small>
+        <div className="action-row">
+          <button className="button" disabled={busy} onClick={() => open(item.entry)}>
+            打开飞书后台
+          </button>
+          {item.copy && (
+            <button className="button" disabled={busy} onClick={() => copy(item.copy!)}>
+              复制配置
+            </button>
+          )}
+        </div>
       </div>
-      {mode === 'summary' ? (
-        <div className="connection-summary">
-          <div className="connection-summary-icon">
-            <Icon name="feishu" />
-          </div>
-          <div>
-            <strong>机器人已配置</strong>
-            <p className="path">{settings.feishu.appId}</p>
-            <small>单聊 {settings.feishu.testChatId || '待绑定'}</small>
-          </div>
-          <button className="button" disabled={working} onClick={() => setMode('existing')}>
-            修改配置
-          </button>
-          <button className="button" onClick={() => setTutorial(true)}>
-            查看教程
-          </button>
-        </div>
-      ) : (
+    );
+  };
+  return (
+    <div className="feishu-flow">
+      {view === 'manage' && (
         <>
-          <div className="onboarding-choices" aria-label="选择连接方式">
-            {(
-              [
-                ['create', '扫码创建机器人', '从一个新的机器人开始', 'plus'],
-                ['existing', '连接已有机器人', '保留原应用与单聊绑定', 'feishu'],
-                ['manual', '手动配置', '跟随教程逐步完成', 'logs'],
-              ] as const
-            ).map(([value, title, subtitle, icon]) => (
+          <div className="flow-page-heading">
+            <span className="eyebrow">FEISHU CONNECTION</span>
+            <h1 tabIndex={-1} ref={heading}>
+              飞书连接
+            </h1>
+            <p>你的机器人、单聊与连接状态，都在这里。</p>
+          </div>
+          <section className="panel flow-manager">
+            <div className="flow-identity">
+              <span className="flow-app-icon">
+                <Icon name="feishu" />
+              </span>
+              <div>
+                <h2>机器人已配置</h2>
+                <p className="path">{props.settings.feishu.appId}</p>
+                <small>Secret 已加密保存在本机</small>
+              </div>
+              <span className={`status-pill ${props.status.feishuConnected ? 'connected' : ''}`}>
+                {props.status.feishuConnected
+                  ? '正式连接在线'
+                  : props.status.phase === 'error' || props.status.phase === 'degraded'
+                    ? '正式连接异常'
+                    : props.status.phase === 'starting'
+                      ? '正式连接启动中'
+                      : '正式连接已停止'}
+              </span>
+            </div>
+            <dl className="flow-binding-summary">
+              <div>
+                <dt>绑定用户</dt>
+                <dd>{props.settings.feishu.allowedOpenId}</dd>
+              </div>
+              <div>
+                <dt>专用单聊</dt>
+                <dd>{props.settings.feishu.testChatId}</dd>
+              </div>
+            </dl>
+            <div className="flow-manager-actions">
               <button
-                key={value}
-                type="button"
-                className={`onboarding-choice ${mode === value ? 'selected' : ''}`}
-                disabled={disabled}
-                aria-pressed={mode === value}
+                className="button"
+                disabled={busy}
+                onClick={() => begin('existing', 'credentials')}
+              >
+                修改凭据
+              </button>
+              <button
+                className="button"
+                disabled={busy}
+                onClick={() => begin('existing', 'binding')}
+              >
+                重新绑定
+              </button>
+              <button className="text-button" disabled={busy} onClick={() => setView('choose')}>
+                更换机器人 <Icon name="arrow" />
+              </button>
+            </div>
+          </section>
+          {(draft || state?.hasPending) && (
+            <div className="flow-resume">
+              <div>
+                <strong>还有一份未完成的配置</strong>
+                <p>当前机器人保持原配置，可随时继续。</p>
+              </div>
+              <button
+                className="button"
+                disabled={busy}
+                onClick={() => begin(draft?.mode ?? 'existing', 'resume')}
+              >
+                继续配置
+              </button>
+            </div>
+          )}
+          <section className="panel">
+            <div className="section-heading split">
+              <div>
+                <h2>{draft ? '有配置尚未完成' : checkLabel}</h2>
+                <p>
+                  {draft
+                    ? '继续配置可检查并保存新连接；当前机器人保持原配置。'
+                    : state?.check.checkedAt
+                      ? `检查于 ${new Date(state.check.checkedAt).toLocaleString('zh-CN')}`
+                      : '检查结果与正式运行状态分别记录。'}
+                </p>
+              </div>
+              <button
+                className="button"
+                disabled={busy || running || !!draft}
+                onClick={() =>
+                  run(async () => {
+                    await act({ kind: 'check' });
+                  })
+                }
+              >
+                {state?.phase === 'checking' ? '检查中…' : '检查连接'}
+              </button>
+            </div>
+            {!draft && details}
+            {running && (
+              <button
+                className="button"
+                onClick={() =>
+                  run(async () => {
+                    await act({ kind: 'cancel' });
+                  })
+                }
+              >
+                取消检查
+              </button>
+            )}
+            <p className="helper">基础检查不代表消息订阅和卡片回调已完成实际验证。</p>
+          </section>
+          {savedNotice && <p className="inline-note">{savedNotice}</p>}
+          {props.hasOtherDraft && (
+            <p className="inline-note">
+              其他页面仍有待应用修改；启动前请完成应用，飞书配置已单独保存。
+            </p>
+          )}
+          <button className="text-button" onClick={() => setHelp(0)}>
+            查看完整配置教程 <Icon name="arrow" />
+          </button>
+        </>
+      )}
+      {view === 'choose' && (
+        <>
+          <div className="flow-page-heading">
+            <span className="eyebrow">LET’S CONNECT</span>
+            <h1 tabIndex={-1} ref={heading}>
+              连接你的飞书机器人
+            </h1>
+            <p>从新机器人开始，或接入你已经配置好的应用。</p>
+          </div>
+          {(draft || state?.hasPending) && (
+            <div className="flow-resume">
+              <div>
+                <strong>配置进度已保存</strong>
+                <p>继续使用已获取的应用，避免重复创建。</p>
+              </div>
+              <button
+                className="button primary"
+                onClick={() => begin(draft?.mode ?? 'existing', 'resume')}
+              >
+                继续配置
+              </button>
+            </div>
+          )}
+          <div className="flow-entry-grid">
+            {(['create', 'existing'] as const).map((mode) => (
+              <button
+                className="flow-entry"
+                key={mode}
+                disabled={busy}
                 onClick={() => {
-                  setMode(value);
-                  if (value === 'manual') setTutorial(true);
+                  if (
+                    (draft || state?.hasPending) &&
+                    !window.confirm(
+                      '开始另一份配置会替换未完成进度；已经在飞书创建的应用不会删除。是否继续？',
+                    )
+                  )
+                    return;
+                  begin(mode, 'replace');
                 }}
               >
-                <Icon name={icon} />
-                <strong>{title}</strong>
-                <small>{subtitle}</small>
+                <span className="flow-app-icon">
+                  <Icon name={mode === 'create' ? 'plus' : 'feishu'} />
+                </span>
+                <h2>{mode === 'create' ? '创建新机器人' : '连接已有机器人'}</h2>
+                <p>
+                  {mode === 'create'
+                    ? '使用飞书扫码，自动保存应用凭据。'
+                    : '填写 App ID 与 Secret，保留原有应用。'}
+                </p>
+                <span className="flow-entry-tail">
+                  {mode === 'create' ? '扫码创建 · 试用' : '开始接入'}
+                  <Icon name="arrow" />
+                </span>
               </button>
             ))}
           </div>
-          {mode === 'create' && (
-            <div className="onboarding-stage">
-              <div>
-                <span className="eyebrow">01 / AUTHORIZE</span>
-                <h3>扫码授权，自动获取应用凭据</h3>
-                <p className="helper">
-                  使用国内飞书扫码。平台可能要求管理员审批；扫码完成后仍需核对事件、长连接与发布状态。
-                </p>
-              </div>
-              {!state?.hasPending && (
-                <label className="field">
-                  <span>机器人名称</span>
-                  <TextInput
-                    value={name}
-                    maxLength={60}
-                    disabled={disabled}
-                    onChange={(event) => setName(event.target.value)}
-                  />
-                </label>
-              )}
-              <div className="action-row">
-                <button
-                  className="button primary"
-                  disabled={disabled || !stopped || !name.trim() || !!state?.hasPending}
-                  onClick={() => action({ kind: 'register', mode: 'create', name })}
-                >
-                  生成授权二维码
-                </button>
-                <span className="helper">试用功能 · 也可使用手动配置</span>
-              </div>
-              {state?.hasPending && (
-                <p className="inline-note">
-                  已保存待配置应用 {state.appId}，请继续配置此应用，避免重复创建。
-                </p>
-              )}
-            </div>
-          )}
-          {mode === 'existing' && (
-            <div className="onboarding-stage">
-              <h3>使用已有应用凭据</h3>
-              {props.credentials}
-              <div className="action-row">
-                <button
-                  className="button primary"
-                  disabled={disabled || !stopped}
-                  onClick={() => action({ kind: 'use-existing' })}
-                >
-                  保存凭据并继续
-                </button>
-                <button
-                  className="button"
-                  disabled={disabled || !stopped || !settings.feishu.appId}
-                  onClick={() =>
-                    action({
-                      kind: 'register',
-                      mode: 'existing',
-                      appId: settings.feishu.appId,
-                      name: 'CodexConnector',
-                    })
-                  }
-                >
-                  扫码补齐权限与订阅
-                </button>
-              </div>
-              <p className="helper">
-                补配只添加缺失项，保留现有配置；更改 Webhook 接收方式需在平台手动确认。
-              </p>
-            </div>
+          {props.configured && (
+            <button className="text-button" onClick={() => setView('manage')}>
+              返回当前连接
+            </button>
           )}
         </>
       )}
-      {state?.qr && qr && (
-        <div className="authorization-card" ref={qrRef}>
-          <img
-            src={qr}
-            width="208"
-            height="208"
-            alt="使用飞书扫码授权创建机器人"
-            onLoad={() => qrRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
-          />
-          <div>
-            <span className="eyebrow">SCAN WITH FEISHU</span>
-            <h3>使用飞书扫描二维码</h3>
-            <p>
-              {remaining > 0
-                ? `剩余 ${Math.floor(remaining / 60)} 分 ${remaining % 60} 秒`
-                : '二维码已过期，请取消后重新生成'}
-            </p>
-            <div className="action-row">
+      {view === 'flow' && draft && (
+        <section className="flow-shell">
+          <header className="flow-header">
+            <span className="eyebrow">
+              {draft.mode === 'create' ? '创建新机器人 · 试用' : '连接已有机器人'}
+            </span>
+            <span className="flow-cache">{cached ? '进度已保存在本机' : '正在保存…'}</span>
+          </header>
+          <nav className="flow-steps" aria-label="飞书接入进度">
+            {titles.map((title, index) => (
               <button
-                className="button"
-                disabled={working || remaining === 0}
-                onClick={() => open('authorization')}
+                key={title}
+                className={step === index + 1 ? 'current' : step > index + 1 ? 'done' : ''}
+                aria-current={step === index + 1 ? 'step' : undefined}
+                disabled={busy || running || index + 1 >= step}
+                onClick={() => advance(index + 1)}
               >
-                在浏览器中打开
+                <span>{step > index + 1 ? <Icon name="check" /> : index + 1}</span>
+                <b>{title}</b>
               </button>
-              <button
-                className="button"
-                disabled={working}
-                onClick={() => action({ kind: 'cancel' })}
-              >
-                取消扫码
-              </button>
+            ))}
+          </nav>
+          <div className="flow-body">
+            <div className="flow-step-title">
+              <span>步骤 {step} / 4</span>
+              <h2 tabIndex={-1} ref={heading}>
+                {titles[step - 1]}
+              </h2>
             </div>
-          </div>
-        </div>
-      )}
-      {state && state.phase !== 'idle' && (
-        <div
-          className={`check-feedback ${state.phase === 'error' || state.phase === 'expired' ? 'error' : ''}`}
-          role="status"
-        >
-          <strong>
-            {state.phase === 'authorizing'
-              ? '等待授权'
-              : state.phase === 'binding'
-                ? state.connected
-                  ? '配置连接在线'
-                  : '配置连接正在建立'
-                : '配置进度'}
-          </strong>
-          <span>{state.message}</span>
-          {running && (
-            <button
-              className="button"
-              disabled={working}
-              onClick={() => action({ kind: 'cancel' })}
-            >
-              取消当前操作
-            </button>
-          )}
-        </div>
-      )}
-      {(state?.hasPending || mode === 'existing' || mode === 'manual') && (
-        <div className="onboarding-stage binding-stage">
-          <div>
-            <span className="eyebrow">02 / BIND</span>
-            <h3>{hasBinding ? '单聊绑定' : '让机器人认出你的单聊'}</h3>
-            <p className="helper">
-              先开启配置连接，再去平台保存长连接设置并发布。这条连接不会启动 Codex。
-            </p>
-          </div>
-          <div className="action-row">
-            <button
-              className="button"
-              disabled={disabled || !stopped}
-              onClick={() => action({ kind: 'bind' })}
-            >
-              {hasBinding ? '重新绑定单聊' : '绑定单聊'}
-            </button>
-            <button
-              className="button"
-              disabled={working}
-              onClick={() => {
-                setTutorial(true);
-                open('events');
-              }}
-            >
-              打开事件与回调设置
-            </button>
-          </div>
-          {state?.bindingCommand && (
-            <div className="binding-command" ref={bindingRef}>
-              <p>在机器人单聊中发送以下指令，剩余 {remaining} 秒：</p>
-              <code>{state.bindingCommand.text}</code>
-              <button
-                className="button"
-                disabled={working || !remaining}
-                onClick={() => copy('binding')}
-              >
-                复制绑定指令
-              </button>
-            </div>
-          )}
-          {state?.candidate && (
-            <div className="binding-candidate">
-              <strong>确认这个账号与单聊</strong>
-              <dl>
-                <dt>企业</dt>
-                <dd>{state.candidate.tenantKey}</dd>
-                <dt>用户 Open ID</dt>
-                <dd>{state.candidate.allowedOpenId}</dd>
-                <dt>Chat ID</dt>
-                <dd>{state.candidate.testChatId}</dd>
-              </dl>
-              <p className="helper">仅在刚才确实由你在自己的单聊发送了绑定指令时确认。</p>
-              <button
-                className="button primary"
-                disabled={working}
-                onClick={() => action({ kind: 'confirm' })}
-              >
-                确认绑定此账号
-              </button>
-            </div>
-          )}
-          {state?.hasPending && state.phase === 'bound' && (
-            <button
-              className="button primary"
-              disabled={disabled || !stopped}
-              onClick={() =>
-                perform(async () => {
-                  await props.onMerge();
-                  notify('绑定已保存到草稿');
-                })
-              }
-            >
-              保存绑定到当前配置
-            </button>
-          )}
-        </div>
-      )}
-      {complete && !state?.hasPending && (
-        <div className="onboarding-stage connection-check" ref={checkRef}>
-          <div>
-            <span className="eyebrow">03 / OPTIONAL CHECK</span>
-            <h3>{summary}</h3>
-            <p className="helper">
-              只检查凭据、历史读取与长连接握手。不会发送消息、创建卡片或执行任务。
-            </p>
-          </div>
-          <div className="action-row">
-            <button
-              className="button primary"
-              disabled={disabled}
-              onClick={() => action({ kind: 'check' })}
-            >
-              检查连接
-            </button>
-            <button
-              className="button"
-              disabled={working || (running && state?.phase !== 'checking') || !stopped}
-              onClick={() =>
-                perform(async () => {
-                  await props.onFlush();
-                  setState(await api.feishuSetup({ kind: 'skip' }));
-                  await props.onComplete();
-                  notify('配置已保存，未验证');
-                })
-              }
-            >
-              跳过验证，完成配置
-            </button>
-            {state?.check.status === 'passed' && (
-              <button
-                className="button"
-                disabled={disabled || !stopped}
-                onClick={() => perform(props.onComplete)}
-              >
-                完成配置
-              </button>
+            {!props.stopped && (
+              <div className="flow-stop">
+                <p>正式服务正在运行。填写内容会保存；继续配置前需要停止连接。</p>
+                <button className="button" disabled={busy} onClick={() => run(props.onStop)}>
+                  停止服务并继续
+                </button>
+              </div>
+            )}
+            {step === 1 && (
+              <>
+                {draft.mode === 'create' && !manual && !draft.hasSecret ? (
+                  <>
+                    <p>飞书授权后，凭据会直接加密保存。你不需要复制 Secret。</p>
+                    <label className="field">
+                      <span>机器人名称</span>
+                      <TextInput
+                        value={name}
+                        maxLength={60}
+                        disabled={busy || running}
+                        onChange={(event) => change({ name: event.target.value })}
+                      />
+                    </label>
+                    {qr && state?.qr && (
+                      <div className="flow-qr" ref={qrContainer}>
+                        <img
+                          src={qr}
+                          width="208"
+                          height="208"
+                          alt="飞书授权二维码"
+                          onLoad={() =>
+                            qrContainer.current?.scrollIntoView({
+                              block: 'center',
+                              behavior: 'smooth',
+                            })
+                          }
+                        />
+                        <div>
+                          <h3>用飞书扫描二维码</h3>
+                          <p>
+                            {seconds > 0
+                              ? `剩余 ${Math.floor(seconds / 60)} 分 ${seconds % 60} 秒`
+                              : '二维码已过期'}
+                          </p>
+                          <button
+                            className="text-button"
+                            disabled={busy || !seconds}
+                            onClick={() => open('authorization')}
+                          >
+                            在浏览器中打开 <Icon name="arrow" />
+                          </button>
+                          <button
+                            className="button"
+                            disabled={busy}
+                            onClick={() =>
+                              run(async () => {
+                                await act({ kind: 'cancel' });
+                              })
+                            }
+                          >
+                            取消扫码
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    <button
+                      className="text-button"
+                      disabled={busy || running}
+                      onClick={() => {
+                        setManual(true);
+                        setHelp(0);
+                      }}
+                    >
+                      无法扫码？手动创建并填写凭据
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {draft.mode === 'create' && draft.hasSecret && (
+                      <div className="inline-note">应用凭据已加密保存，继续下一步即可。</div>
+                    )}
+                    {input('appId', 'App ID', 'cli_…')}
+                    <label className="field">
+                      <span>App Secret</span>
+                      <TextInput
+                        type="password"
+                        autoComplete="new-password"
+                        disabled={busy || running}
+                        value={secret}
+                        placeholder={draft.hasSecret ? '已保存，留空保持原值' : '填写应用密钥'}
+                        onChange={(event) => change({ secret: event.target.value })}
+                      />
+                      <small>由 macOS Keychain 保护，不会回显已保存的密钥。</small>
+                    </label>
+                    <div className="action-row">
+                      <button className="text-button" onClick={() => setHelp(0)}>
+                        在哪里获取凭据？
+                      </button>
+                      {draft.mode === 'existing' && (
+                        <button
+                          className="text-button"
+                          disabled={busy || running || !props.stopped || !fields.appId}
+                          onClick={() =>
+                            run(async () => {
+                              await flush();
+                              await act({
+                                kind: 'register',
+                                mode: 'existing',
+                                appId: fields.appId,
+                                name,
+                              });
+                            })
+                          }
+                        >
+                          扫码补齐权限与订阅
+                        </button>
+                      )}
+                    </div>
+                    {qr && (
+                      <div className="flow-qr" ref={qrContainer}>
+                        <img
+                          src={qr}
+                          width="208"
+                          height="208"
+                          alt="飞书补配二维码"
+                          onLoad={() =>
+                            qrContainer.current?.scrollIntoView({
+                              block: 'center',
+                              behavior: 'smooth',
+                            })
+                          }
+                        />
+                        <button
+                          className="button"
+                          onClick={() =>
+                            run(async () => {
+                              await act({ kind: 'cancel' });
+                            })
+                          }
+                        >
+                          取消扫码
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+            {step === 2 && (
+              <>
+                <p>在飞书后台完成以下设置。此处确认只记录你的操作，不代表平台检查通过。</p>
+                <div className={`flow-channel ${state?.connected ? 'online' : ''}`}>
+                  <i className={`dot ${state?.connected ? 'green' : ''}`} />
+                  <span>
+                    {state?.connected
+                      ? '配置连接在线 · 可到飞书后台保存长连接设置'
+                      : state?.connectionExpiresAt
+                        ? '正在建立配置连接…'
+                        : '配置连接未开启'}
+                  </span>
+                  <button
+                    className="text-button"
+                    disabled={busy || !props.stopped}
+                    onClick={() =>
+                      run(async () => {
+                        await act({ kind: 'suspend' });
+                        await act({ kind: 'connect' });
+                      })
+                    }
+                  >
+                    重新连接
+                  </button>
+                </div>
+                <div className="flow-checklist">
+                  {[1, 2, 3, 4].map((index, i) => (
+                    <details key={index} open={i === 0}>
+                      <summary>
+                        <span>{String(i + 1).padStart(2, '0')}</span>
+                        <strong>{lessons[index]!.title}</strong>
+                        <Icon name="chevronDown" />
+                      </summary>
+                      {lesson(index)}
+                    </details>
+                  ))}
+                </div>
+              </>
+            )}
+            {step === 3 && (
+              <>
+                <p>只需向机器人发送一次绑定指令。它不会创建 Codex 任务。</p>
+                {bound && !state?.bindingCommand && !state?.candidate && (
+                  <div className="flow-bound">
+                    <Icon name="check" />
+                    <div>
+                      <strong>已有单聊绑定，可直接继续</strong>
+                      <p className="path">
+                        {fields.allowedOpenId}
+                        <br />
+                        {fields.testChatId}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {state?.bindingCommand && (
+                  <div className="flow-code" ref={bindingContainer}>
+                    <span>在机器人单聊中发送</span>
+                    <code>{state.bindingCommand.text}</code>
+                    <div className="action-row">
+                      <button
+                        className="button primary"
+                        disabled={busy || seconds === 0}
+                        onClick={() => copy('binding')}
+                      >
+                        复制绑定指令
+                      </button>
+                      <small>{seconds ? `${seconds} 秒后过期` : '已过期，请重新生成'}</small>
+                    </div>
+                  </div>
+                )}
+                {state?.candidate && (
+                  <div className="flow-candidate">
+                    <h3>确认这是你的账号和单聊</h3>
+                    <dl>
+                      <dt>企业</dt>
+                      <dd>{state.candidate.tenantKey}</dd>
+                      <dt>用户</dt>
+                      <dd>{state.candidate.allowedOpenId}</dd>
+                      <dt>单聊</dt>
+                      <dd>{state.candidate.testChatId}</dd>
+                    </dl>
+                    <button
+                      className="button primary"
+                      disabled={busy}
+                      onClick={() =>
+                        run(async () => {
+                          await act({ kind: 'confirm' });
+                        })
+                      }
+                    >
+                      确认是我的单聊
+                    </button>
+                  </div>
+                )}
+                <div className="action-row">
+                  <button
+                    className="button"
+                    disabled={busy || !props.stopped}
+                    onClick={() =>
+                      run(async () => {
+                        await flush();
+                        await act({ kind: 'flow-bind' });
+                      })
+                    }
+                  >
+                    {state?.bindingCommand
+                      ? '重新生成指令'
+                      : bound
+                        ? '重新绑定其他单聊'
+                        : '生成绑定指令'}
+                  </button>
+                  <button
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() =>
+                      run(async () => {
+                        await act({ kind: 'suspend' });
+                        setManual(!manual);
+                      })
+                    }
+                  >
+                    手动填写身份字段
+                  </button>
+                </div>
+                {manual && (
+                  <div className="form-grid">
+                    {input('tenantKey', 'Tenant Key', '企业标识')}
+                    {input('allowedOpenId', '用户 Open ID', 'ou_…')}
+                    {input('testChatId', '单聊 Chat ID', 'oc_…')}
+                  </div>
+                )}
+                <p className="helper">
+                  绑定码 5 分钟有效。没有收到结果时，核对消息事件与发布状态。
+                </p>
+                <button className="text-button" onClick={() => setHelp(5)}>
+                  查看绑定帮助
+                </button>
+              </>
+            )}
+            {step === 4 && (
+              <>
+                <p>只保存飞书配置，其他页面尚未应用的修改会继续保留。</p>
+                <dl className="flow-final-summary">
+                  <dt>机器人</dt>
+                  <dd>{fields.appId}</dd>
+                  <dt>授权用户</dt>
+                  <dd>{fields.allowedOpenId}</dd>
+                  <dt>专用单聊</dt>
+                  <dd>{fields.testChatId}</dd>
+                </dl>
+                <div className="flow-check-heading">
+                  <h3>{state?.phase === 'checking' ? '正在检查连接，最长 30 秒…' : checkLabel}</h3>
+                  <small>不会发送消息、创建卡片或执行模型任务。</small>
+                </div>
+                {details}
+                {state?.phase === 'checking' && (
+                  <button
+                    className="text-button"
+                    onClick={() =>
+                      run(async () => {
+                        saveAfterCheck.current = false;
+                        await act({ kind: 'cancel' });
+                      })
+                    }
+                  >
+                    取消检查
+                  </button>
+                )}
+                <p className="helper">
+                  检查不包含真实消息与卡片操作；跳过后仍会在正式启动时检查必需条件。
+                </p>
+              </>
+            )}
+            {(error || state?.phase === 'error' || state?.phase === 'expired') && (
+              <div className="check-feedback error" role="alert">
+                {error || state?.message}
+              </div>
             )}
           </div>
-          {state && (
-            <details className="check-details" open={state.check.status === 'failed'}>
-              <summary>
-                检查详情
-                {state.check.checkedAt
-                  ? ` · ${new Date(state.check.checkedAt).toLocaleString('zh-CN')}`
-                  : ''}
-              </summary>
-              <ul>
-                {(['credentials', 'history', 'websocket'] as const).map((key) => (
-                  <li key={key}>
-                    <Icon
-                      name={
-                        state.check[key].status === 'passed'
-                          ? 'check'
-                          : state.check[key].status === 'failed'
-                            ? 'alert'
-                            : 'activity'
-                      }
-                    />
-                    <strong>
-                      {{ credentials: '应用凭据', history: '历史读取', websocket: '长连接' }[key]}
-                    </strong>
-                    <span>{state.check[key].message}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="helper">
-                基础检查不代表消息订阅和卡片回调已完成实际验证；正式运行状态在总览中单独展示。
-              </p>
-              <button className="button" onClick={() => setTutorial(true)}>
-                查看修复教程
+          <footer className="flow-footer">
+            <div>
+              <button
+                className="text-button"
+                disabled={busy || running || step === 1}
+                onClick={() => advance(step - 1)}
+              >
+                上一步
               </button>
-            </details>
-          )}
-        </div>
+              <button
+                className="text-button"
+                disabled={busy}
+                onClick={() =>
+                  run(async () => {
+                    await leave();
+                    setView(props.configured ? 'manage' : 'choose');
+                  })
+                }
+              >
+                稍后继续
+              </button>
+            </div>
+            <div>
+              {step === 4 ? (
+                <>
+                  <button
+                    className="button"
+                    disabled={busy || !props.stopped}
+                    onClick={() =>
+                      run(async () => {
+                        saveAfterCheck.current = false;
+                        await flush();
+                        await act({ kind: 'flow-skip' });
+                        await commit();
+                      })
+                    }
+                  >
+                    跳过检查，直接保存
+                  </button>
+                  <button
+                    className="button primary"
+                    disabled={busy || running || !props.stopped}
+                    onClick={() =>
+                      run(async () => {
+                        await flush();
+                        if (state?.check.status === 'passed') await commit();
+                        else {
+                          saveAfterCheck.current = true;
+                          await act({ kind: 'flow-check' });
+                        }
+                      })
+                    }
+                  >
+                    {state?.check.status === 'passed' ? '保存配置' : '检查并保存'}
+                  </button>
+                </>
+              ) : (
+                <button
+                  className="button primary"
+                  disabled={
+                    busy ||
+                    (running && step !== 3) ||
+                    (step === 3 && (!bound || !!state?.candidate)) ||
+                    !props.stopped
+                  }
+                  onClick={() => {
+                    if (step === 1 && draft.mode === 'create' && !manual && !draft.hasSecret)
+                      run(async () => {
+                        await flush();
+                        await act({ kind: 'register', mode: 'create', name });
+                      });
+                    else advance(step === 1 && draft.platformConfirmed && bound ? 4 : step + 1);
+                  }}
+                >
+                  {step === 1 && draft.mode === 'create' && !manual && !draft.hasSecret
+                    ? state?.phase === 'authorizing'
+                      ? '等待飞书授权…'
+                      : '生成授权二维码'
+                    : step === 2
+                      ? '已完成设置，继续'
+                      : '下一步'}
+                  <Icon name="arrow" />
+                </button>
+              )}
+            </div>
+          </footer>
+        </section>
       )}
-      {error && (
+      {view !== 'flow' && error && (
         <div className="check-feedback error" role="alert">
           {error}
         </div>
       )}
-      {!stopped && mode !== 'summary' && (
-        <div className="inline-note">
-          正式服务运行中。填写内容仍会自动缓存；请先在总览停止服务，再进行扫码、绑定或应用配置。
-        </div>
-      )}
-      {mode !== 'summary' && (
-        <details className="onboarding-advanced" open={mode === 'manual'}>
-          <summary>高级配置 · 手动编辑身份字段</summary>
-          {mode !== 'existing' && props.credentials}
-          {props.identity}
-        </details>
-      )}
-      <div className="tutorial-heading">
-        <div>
-          <h3>飞书机器人配置指南</h3>
-          <p className="helper">教程可离线查看。勾选仅记录你的操作进度，不代表检测通过。</p>
-        </div>
-        <button className="button" aria-expanded={tutorial} onClick={() => setTutorial(!tutorial)}>
-          {tutorial ? '收起教程' : '查看教程'}
-        </button>
-      </div>
-      {tutorial && (
-        <div className="feishu-tutorial">
-          {lessons.map((lesson, index) => (
-            <details key={lesson.title} open={index === 0 && !state?.tutorial.includes(0)}>
-              <summary>
-                <span className={`lesson-number ${state?.tutorial.includes(index) ? 'done' : ''}`}>
-                  {state?.tutorial.includes(index) ? '✓' : String(index + 1).padStart(2, '0')}
-                </span>
-                <strong>{lesson.title}</strong>
-                <Icon name="chevronDown" />
-              </summary>
-              <div className="lesson-content">
-                <div
-                  className="tutorial-diagram"
-                  aria-label={`操作路径示意：${lesson.route.join(' → ')}`}
+      {help !== null && (
+        <div className="flow-help-backdrop" onClick={() => setHelp(null)}>
+          <aside
+            className="flow-help"
+            role="dialog"
+            aria-modal="true"
+            aria-label="飞书配置帮助"
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setHelp(null);
+              if (event.key === 'Tab') {
+                const targets = [
+                  ...event.currentTarget.querySelectorAll<HTMLElement>(
+                    'button:not(:disabled), a[href], input:not(:disabled)',
+                  ),
+                ];
+                const first = targets[0],
+                  last = targets.at(-1);
+                if (event.shiftKey && document.activeElement === first) {
+                  event.preventDefault();
+                  last?.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                  event.preventDefault();
+                  first?.focus();
+                }
+              }
+            }}
+          >
+            <header>
+              <h2>配置帮助</h2>
+              <button className="button" autoFocus onClick={() => setHelp(null)}>
+                关闭帮助
+              </button>
+            </header>
+            <nav>
+              {lessons.map((item, index) => (
+                <button
+                  className={help === index ? 'selected' : ''}
+                  key={item.title}
+                  onClick={() => setHelp(index)}
                 >
-                  {lesson.route.map((label, step) => (
-                    <span key={label}>
-                      {step > 0 && <Icon name="chevron" />}
-                      <b>{label}</b>
-                    </span>
-                  ))}
-                </div>
-                <p>{lesson.instruction}</p>
-                {index === 2 && (
-                  <pre>{JSON.stringify({ scopes: FEISHU_SETUP_MANIFEST.scopes }, null, 2)}</pre>
-                )}
-                {index === 3 && (
-                  <div className="tutorial-events">
-                    <code>im.message.receive_v1</code>
-                    <code>card.action.trigger</code>
-                  </div>
-                )}
-                <p className="lesson-standard">
-                  <Icon name="check" />
-                  完成标准：{lesson.done}
-                </p>
-                <div className="action-row">
-                  <button className="button" disabled={working} onClick={() => open(lesson.entry)}>
-                    打开官方入口
-                  </button>
-                  {lesson.copy && (
-                    <button
-                      className="button"
-                      disabled={working}
-                      onClick={() => copy(lesson.copy!)}
-                    >
-                      复制配置
-                    </button>
-                  )}
-                  <label className="lesson-completed">
-                    <input
-                      type="checkbox"
-                      checked={state?.tutorial.includes(index) ?? false}
-                      disabled={working}
-                      onChange={(event) =>
-                        action({
-                          kind: 'tutorial',
-                          steps: event.target.checked
-                            ? [...(state?.tutorial ?? []), index]
-                            : (state?.tutorial ?? []).filter((item) => item !== index),
-                        })
-                      }
-                    />
-                    我已完成此步
-                  </label>
-                </div>
-              </div>
-            </details>
-          ))}
-          <p className="helper">可选：机器人自定义菜单可以稍后配置，不影响首次连接。</p>
+                  {index + 1}. {item.title}
+                </button>
+              ))}
+            </nav>
+            {lesson(help)}
+            <p className="helper">教程可离线查看；官方后台入口需要联网。</p>
+          </aside>
         </div>
       )}
-    </section>
+    </div>
   );
 }
