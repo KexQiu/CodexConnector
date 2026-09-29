@@ -154,7 +154,7 @@ export class StatusMetrics {
       .get(this.owner, projectKey);
     return typeof payload === 'string' ? projectSchema.parse(JSON.parse(payload)) : undefined;
   }
-  saveProject(projectKey: string, value: z.infer<typeof projectSchema>) {
+  saveProject(projectKey: string | null, value: z.infer<typeof projectSchema>) {
     this.store.db
       .prepare(
         'INSERT INTO project_metrics VALUES (?,?,?) ON CONFLICT(owner_key,project_key) DO UPDATE SET payload=excluded.payload',
@@ -263,7 +263,7 @@ export class StatusMetrics {
     threadId: string | null,
     turnId: string | null,
     details = false,
-    projectKey?: string,
+    projectKey?: string | null,
     cwd?: string,
   ) {
     const row = this.session(threadId);
@@ -409,7 +409,7 @@ export class MetricsPoller {
   }
   async refreshSession(
     threadId: string | null,
-    projectKey?: string,
+    projectKey?: string | null,
     force = true,
     now = Date.now(),
   ) {

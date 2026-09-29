@@ -25,6 +25,7 @@ export function defaultSettings(): DesktopSettings {
     codexBinary: baseline.codexBinary,
     feishu: { appId: '', tenantKey: '', allowedOpenId: '', testChatId: '' },
     projects: [],
+    projectless: { enabled: true },
     maxConcurrentTasks: 1,
     remoteProjectCreation: defaultRemoteProjectCreation(),
     hiddenProjectRoots: [],

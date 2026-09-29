@@ -1,3 +1,4 @@
+import type { ChildProcess } from 'node:child_process';
 import { mkdirSync, lstatSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { GatewayConfig } from '../config/schema.js';
@@ -8,6 +9,7 @@ import { TaskError } from '../tasks/types.js';
 import { gatewayCredentials, type FeishuCredentials } from '../feishu/credentials.js';
 import { FeishuRuntime } from '../feishu/runtime.js';
 import { FeishuApi } from '../feishu/api.js';
+import { OrdinaryChatServer } from '../conversations/server.js';
 import { FeishuInbox } from '../feishu/inbound.js';
 
 export async function runGatewayCli(
@@ -15,11 +17,17 @@ export async function runGatewayCli(
   options: {
     timeout?: string | undefined;
     'message-id'?: string | undefined;
-    observe?: (state: { rpcReady: boolean; feishuConnected: boolean; ready: boolean }) => void;
+    observe?: (state: {
+      rpcReady: boolean;
+      feishuConnected: boolean;
+      ready: boolean;
+      projectless?: { enabled: boolean; ready: boolean; error: string | null };
+    }) => void;
     rpcAllowed?: () => boolean;
     signal?: AbortSignal;
     credentials?: FeishuCredentials;
     interruptOnStop?: boolean;
+    onOrdinaryChild?: (child: ChildProcess | undefined) => void;
   },
   recover = false,
 ) {
@@ -31,6 +39,11 @@ export async function runGatewayCli(
     throw new TaskError('dataDir 必须是当前用户私有目录（700）');
   const db = openGatewayDatabase(runtimePaths(config.dataDir).database);
   let runtime: FeishuRuntime | undefined;
+  const ordinary = new OrdinaryChatServer(
+    config.codex.binary,
+    config.projectless?.enabled !== false,
+    options.onOrdinaryChild,
+  );
   let stopped = false;
   let heartbeat: NodeJS.Timeout | undefined;
   const stop = () => {
@@ -61,12 +74,10 @@ export async function runGatewayCli(
     const timeout = Number(options.timeout ?? 0);
     if (!Number.isInteger(timeout) || timeout < 0 || timeout > 86400)
       throw new TaskError('timeout 必须为 0–86400 秒，0 表示前台持续运行');
-    runtime = new FeishuRuntime(
-      store,
-      config,
-      credentials,
-      options.rpcAllowed ? { rpcAllowed: options.rpcAllowed } : {},
-    );
+    runtime = new FeishuRuntime(store, config, credentials, {
+      ...(options.rpcAllowed ? { rpcAllowed: options.rpcAllowed } : {}),
+      ordinary,
+    });
     const observe = () => {
       if (runtime) options.observe?.(runtime.status());
     };
@@ -79,6 +90,7 @@ export async function runGatewayCli(
       stop();
       return 0;
     }
+    await ordinary.ensure();
     await runtime.start();
     process.stdout.write(
       JSON.stringify({
@@ -89,6 +101,7 @@ export async function runGatewayCli(
     );
     const deadline = timeout ? Date.now() + timeout * 1000 : Infinity;
     while (!stopped && Date.now() < deadline) {
+      await ordinary.ensure();
       await runtime.tick();
       await delay(500);
     }
@@ -96,6 +109,7 @@ export async function runGatewayCli(
   } finally {
     if (options.interruptOnStop && runtime) await runtime.shutdown();
     runtime?.close();
+    await ordinary.stop();
     if (heartbeat) clearInterval(heartbeat);
     options.observe?.({
       ...runtime?.status(),

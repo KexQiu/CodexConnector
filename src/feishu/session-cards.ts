@@ -26,20 +26,27 @@ export function sameConversation(a: StoredTask, b: StoredTask | null | undefined
     !!b &&
     a.owner_key === b.owner_key &&
     a.project_key === b.project_key &&
-    (a.task_id === b.task_id || (!!a.thread_id && a.thread_id === b.thread_id))
+    a.conversation_id === b.conversation_id
   );
 }
 export function gatewaySessionCard(
   store: TaskStore,
   owner: string,
-  projectKey: string,
+  projectKey: string | null,
   projectName: string,
   selected: StoredTask | null,
   page: number,
+  chat?: string,
 ) {
   const groups = new Map<string, StoredTask[]>();
-  for (const task of store.list(owner).filter((t) => t.project_key === projectKey)) {
-    const key = task.thread_id ?? task.task_id;
+  for (const task of store
+    .list(owner)
+    .filter(
+      (t) =>
+        t.project_key === projectKey &&
+        (!chat || store.conversations.get(t.conversation_id).chat_id === chat),
+    )) {
+    const key = task.conversation_id;
     groups.set(key, [...(groups.get(key) ?? []), task]);
   }
   const groupsSorted = [...groups.values()]
@@ -50,7 +57,7 @@ export function gatewaySessionCard(
       (a, b) => Math.max(...b.map((t) => t.updated_at)) - Math.max(...a.map((t) => t.updated_at)),
     );
   pageGuard(page, groupsSorted.length);
-  const layout = base('选择会话', `${projectName} · ${projectKey}`);
+  const layout = base('选择会话', projectKey ? `${projectName} · ${projectKey}` : projectName);
   layout.status = `第 ${page + 1}/${Math.max(1, Math.ceil(groupsSorted.length / PAGE_SIZE))} 页 · ${groupsSorted.length} 个会话`;
   const buttons: NoticeButton[] = [];
   for (const group of groupsSorted.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) {
@@ -63,7 +70,7 @@ export function gatewaySessionCard(
     const output = store.result(task.task_id);
     const actions = [buttons.length];
     buttons.push({
-      label: current ? '查看详情' : '切换到此会话',
+      label: current ? '查看详情' : '接着聊',
       action: current ? 'details' : 'select',
       taskId: task.task_id,
       expiresAt: Date.now() + DRAFT_TTL,
@@ -85,7 +92,7 @@ export function gatewaySessionCard(
   const nav = (label: string, target: number) =>
     buttons.push({
       label,
-      action: 'sessions',
+      action: projectKey === null ? 'projectless_sessions' : 'sessions',
       projectKey,
       choice: 'gateway',
       page: target,
@@ -93,14 +100,21 @@ export function gatewaySessionCard(
     });
   if (page > 0) nav('上一页', page - 1);
   if ((page + 1) * PAGE_SIZE < groupsSorted.length) nav('下一页', page + 1);
-  buttons.push({
-    label: '桌面会话（只读）',
-    action: 'sessions',
-    projectKey,
-    choice: 'desktop',
-    page: 0,
-    expiresAt: Date.now() + DRAFT_TTL,
-  });
+  if (projectKey === null)
+    buttons.push({
+      label: '新建会话',
+      action: 'projectless_new',
+      expiresAt: Date.now() + DRAFT_TTL,
+    });
+  else
+    buttons.push({
+      label: '桌面会话（只读）',
+      action: 'sessions',
+      projectKey,
+      choice: 'desktop',
+      page: 0,
+      expiresAt: Date.now() + DRAFT_TTL,
+    });
   buttons.push({
     label: '当前面板',
     action: 'panel',
@@ -119,7 +133,10 @@ export async function desktopSessionCard(
   if (!Number.isSafeInteger(page) || page < 0 || page > 499)
     throw new TaskError('页码应为 1–500。');
   const result = await projects.sessions(projectKey, page * PAGE_SIZE, PAGE_SIZE);
-  const layout = base('桌面会话 · 只读', `${projectName} · ${projectKey}`);
+  const layout = base(
+    '桌面会话 · 只读',
+    projectKey ? `${projectName} · ${projectKey}` : projectName,
+  );
   const buttons: NoticeButton[] = [];
   if (!result.available) layout.alerts.push('项目路径失效，暂时无法可靠列出会话。');
   else {
@@ -183,7 +200,7 @@ export function resultCard(store: TaskStore, task: StoredTask, page: number) {
   const pages = resultPages(store.result(task.task_id));
   if (!Number.isSafeInteger(page) || page < 0 || page >= pages.length)
     throw new TaskError('结果页码已变化，请重新打开完整内容。');
-  const layout = base(topicTitle(store, task), `${task.project_key} · 完整内容`);
+  const layout = base(topicTitle(store, task), `${task.project_key ?? '无项目'} · 完整内容`);
   layout.status = `第 ${page + 1}/${pages.length} 页 · ${taskStateNames[task.status]}`;
   layout.sections.push({
     title: '回答正文',

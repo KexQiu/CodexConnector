@@ -102,6 +102,24 @@ describe('M3 real SQLite and installed SDK; simulated Feishu HTTP', () => {
     await commands.processNext();
     return result;
   };
+  // Upgrade fixtures: new plain messages now start projectless chat, but v10 drafts
+  // remain recoverable and must still require their original project selection.
+  async function legacyDraft(text, id) {
+    const result = inbox.receive('message', message(text, id));
+    const row = db
+      .prepare('SELECT command_id FROM feishu_commands WHERE inbox_id=?')
+      .get(result.inboxId);
+    const commandId =
+      row?.command_id ??
+      db
+        .prepare('SELECT command_id FROM feishu_commands ORDER BY rowid DESC LIMIT 1')
+        .pluck()
+        .get();
+    db.prepare(
+      "INSERT INTO feishu_drafts (draft_id,owner_key,chat_id,prompt,state,created_at,expires_at) VALUES (?,?,?,?,'pending',?,?)",
+    ).run(commandId, inbox.owner, credentials.testChatId, text, Date.now(), Date.now() + 86400000);
+    await commands.processNext();
+  }
   function action(nonce, messageId = 'om_1') {
     return {
       event_id: randomUUID(),
@@ -131,8 +149,8 @@ describe('M3 real SQLite and installed SDK; simulated Feishu HTTP', () => {
     await commands.processNext();
     return { row, result };
   }
-  it('saves a first natural-language request, renders projects, and submits it exactly once after a click', async () => {
-    await receive('检查登录页面', 'om_natural');
+  it('restores a pre-v11 draft, renders projects, and submits it exactly once after a click', async () => {
+    await legacyDraft('检查登录页面', 'om_natural');
     expect(store.list()).toHaveLength(0);
     expect(db.prepare('SELECT prompt FROM feishu_drafts').pluck().get()).toBe('检查登录页面');
     await sender.flushOne();
@@ -143,12 +161,14 @@ describe('M3 real SQLite and installed SDK; simulated Feishu HTTP', () => {
     expect(store.list()[0].prompt).toBe('检查登录页面');
     expect(store.list()[0].project_key).toBe('p');
     expect(db.prepare('SELECT state FROM feishu_drafts').pluck().get()).toBe('submitted');
-    expect(inbox.receive('action', action(row.nonce, row.message_id)).outcome).toBe('duplicate');
+    expect(inbox.receive('action', action(row.nonce, row.message_id)).outcome).toBe(
+      'expired-or-invalid',
+    );
     await commands.processNext();
     expect(store.list()).toHaveLength(1);
   });
   it('keeps the saved request and project buttons usable across a database reopen', async () => {
-    await receive('保留这条需求', 'om_draft');
+    await legacyDraft('保留这条需求', 'om_draft');
     await sender.flushOne();
     db.close();
     db = openGatewayDatabase(join(dir, 'gateway.sqlite'));
@@ -162,7 +182,7 @@ describe('M3 real SQLite and installed SDK; simulated Feishu HTTP', () => {
     expect(store.list()[0].prompt).toBe('保留这条需求');
   });
   it('rolls back draft consumption and task creation together when destination persistence fails', async () => {
-    await receive('原子提交', 'om_draft');
+    await legacyDraft('原子提交', 'om_draft');
     await sender.flushOne();
     db.exec(
       "CREATE TRIGGER reject_destination BEFORE INSERT ON task_destinations BEGIN SELECT RAISE(ABORT,'fixture'); END",
@@ -183,7 +203,7 @@ describe('M3 real SQLite and installed SDK; simulated Feishu HTTP', () => {
       root: join(dir, 'other'),
       remoteWrite: true,
     });
-    await receive('只执行一次', 'om_draft');
+    await legacyDraft('只执行一次', 'om_draft');
     await sender.flushOne();
     await clickUi('project', { project_key: 'p' });
     await clickUi('project', { project_key: 'other' });
@@ -192,8 +212,8 @@ describe('M3 real SQLite and installed SDK; simulated Feishu HTTP', () => {
     expect(db.prepare('SELECT project_key FROM user_context').pluck().get()).toBe('p');
   });
   it('keeps separate unselected messages separate instead of replacing the earlier draft', async () => {
-    await receive('第一条需求', 'om_draft1');
-    await receive('第二条需求', 'om_draft2');
+    await legacyDraft('第一条需求', 'om_draft1');
+    await legacyDraft('第二条需求', 'om_draft2');
     await sender.flushOne();
     await sender.flushOne();
     const drafts = db.prepare('SELECT draft_id FROM feishu_drafts ORDER BY rowid').all();
@@ -202,7 +222,7 @@ describe('M3 real SQLite and installed SDK; simulated Feishu HTTP', () => {
     expect(store.list().map((t) => t.prompt)).toEqual(['第一条需求', '第二条需求']);
   });
   it.each(['cancel', 'expired', 'revoked'])('does not execute a %s draft', async (reason) => {
-    await receive('不能执行', 'om_draft');
+    await legacyDraft('不能执行', 'om_draft');
     await sender.flushOne();
     if (reason === 'cancel') await clickUi('cancel_draft');
     if (reason === 'expired') db.prepare('UPDATE feishu_drafts SET expires_at=0').run();
@@ -246,7 +266,7 @@ describe('M3 real SQLite and installed SDK; simulated Feishu HTTP', () => {
         remoteWrite: true,
       });
     }
-    await receive('翻页后执行', 'om_draft');
+    await legacyDraft('翻页后执行', 'om_draft');
     await sender.flushOne();
     expect(messages[0].body.content).toContain('只读');
     expect(messages[0].body.content).toContain('路径失效');
@@ -271,7 +291,7 @@ describe('M3 real SQLite and installed SDK; simulated Feishu HTTP', () => {
       },
       sessions: async () => ({ data: [], total: 0, available: true }),
     });
-    await receive('离线时保存', 'om_offline');
+    await legacyDraft('离线时保存', 'om_offline');
     await sender.flushOne();
     expect(messages[0].body.content).toContain('暂时无法发现');
     await clickUi('project');
@@ -329,19 +349,20 @@ describe('M3 real SQLite and installed SDK; simulated Feishu HTTP', () => {
     await receive('/新建 p 第一个话题', 'om_first');
     const first = store.list()[0];
     await receive('第二条消息', 'om_early');
-    expect(store.list()).toHaveLength(1);
+    expect(store.list()).toHaveLength(2);
     const queued = db
       .prepare('SELECT * FROM feishu_commands WHERE target_task_id=?')
       .get(first.task_id);
-    expect(queued.state).toBe('received');
+    expect(queued.state).toBe('processed');
     await receive('/选择 other', 'om_switch');
     complete(first, 'thread-first');
-    await commands.processNext(Date.now() + 2000);
+    const pending = store.list().find((t) => t.prompt === '第二条消息');
+    expect(store.claim(pending.task_id, 'epoch')).toBeTruthy();
     const second = store.list().find((t) => t.prompt === '第二条消息');
     expect(second.thread_id).toBe('thread-first');
     expect(second.project_key).toBe('p');
     expect(db.prepare('SELECT project_key FROM user_context').pluck().get()).toBe('other');
-    expect(store.diagnostics().locks).toBe(0);
+    expect(store.diagnostics().locks).toBe(3);
   });
   it('freezes a plain-message route before a persistence retry instead of following a later selection', async () => {
     mkdirSync(join(dir, 'other'));
@@ -366,7 +387,7 @@ describe('M3 real SQLite and installed SDK; simulated Feishu HTTP', () => {
     db.exec(
       "CREATE TRIGGER fail_picker BEFORE INSERT ON outbox WHEN json_extract(NEW.payload,'$.title')='这项任务在哪个项目进行？' BEGIN SELECT RAISE(ABORT,'fixture'); END",
     );
-    await receive('保持等待选择', 'om_pending');
+    await legacyDraft('保持等待选择', 'om_pending');
     expect(db.prepare('SELECT state FROM feishu_drafts').pluck().get()).toBe('pending');
     db.exec('DROP TRIGGER fail_picker');
     await receive('/选择 p', 'om_switch');
@@ -375,7 +396,7 @@ describe('M3 real SQLite and installed SDK; simulated Feishu HTTP', () => {
     expect(db.prepare('SELECT state FROM feishu_drafts').pluck().get()).toBe('pending');
   });
   it('binds recovered taskless-card receipts before accepting project clicks, without resending the card', async () => {
-    await receive('不要重复', 'om_draft');
+    await legacyDraft('不要重复', 'om_draft');
     const create = api.create;
     api.create = async (...args) => {
       await create(...args);
@@ -582,8 +603,8 @@ describe('M3 real SQLite and installed SDK; simulated Feishu HTTP', () => {
     expect(() => commands.resolveTask(task.task_id.slice(0, 7))).toThrow(/8/);
     // Prefix collision is exercised with a cloned task, keeping identity constraints distinct.
     db.prepare(
-      `INSERT INTO tasks (task_id,request_key,fingerprint,owner_key,owner_json,project_key,cwd,prompt,status,created_at,updated_at)
-      SELECT ?,?,fingerprint,owner_key,owner_json,project_key,cwd,prompt,status,created_at,updated_at FROM tasks WHERE task_id=?`,
+      `INSERT INTO tasks (task_id,request_key,fingerprint,owner_key,owner_json,project_key,cwd,prompt,status,created_at,updated_at,conversation_id,fingerprint_version)
+      SELECT ?,?,fingerprint,owner_key,owner_json,project_key,cwd,prompt,status,created_at,updated_at,conversation_id,fingerprint_version FROM tasks WHERE task_id=?`,
     ).run(task.task_id.slice(0, 8) + '-other', 'distinct', task.task_id);
     expect(() => commands.resolveTask(task.task_id.slice(0, 8))).toThrow(/冲突/);
     config.projects[0].remoteWrite = false;

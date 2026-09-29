@@ -27,7 +27,7 @@ type Project = { key: string; name: string; available: boolean } & ProjectAccess
 export function projectPickerCard(
   projects: Project[],
   page: number,
-  currentProject: string | undefined,
+  currentProject: string | null | undefined,
   draft: { id: string; prompt: string; expiresAt: number } | null,
   discoveryUnavailable: boolean,
   canCreate = false,
@@ -47,6 +47,14 @@ export function projectPickerCard(
   if (discoveryUnavailable) layout.alerts.push('暂时无法发现其他桌面项目，已列出本机配置的项目。');
   const buttons: NoticeButton[] = [];
   const expiresAt = draft?.expiresAt ?? Date.now() + DRAFT_TTL;
+  if (!draft) {
+    layout.sections.unshift({
+      title: currentProject === null ? '当前 · 无项目' : '无项目',
+      text: '普通聊天：不读取文件、不执行命令、不调用外部工具；仅允许内置时钟。',
+      actions: [0],
+    });
+    buttons.push({ label: '查看无项目会话', action: 'projectless_sessions', page: 0, expiresAt });
+  }
   for (const project of projects.slice(page * PROJECT_PAGE_SIZE, (page + 1) * PROJECT_PAGE_SIZE)) {
     const selectable = project.available && canExecuteProject(project);
     const actions = selectable ? [buttons.length] : [];
@@ -104,7 +112,7 @@ export function helpCard() {
   layout.sections = [
     {
       title: '日常对话',
-      text: '选择项目后直接发送需求。继续当前会话时，直接发送下一条消息即可。',
+      text: '直接发送消息即可开始无项目聊天；需要处理文件时先选择项目。继续当前会话时，直接发送下一条消息即可。',
       notes: ['执行中的新消息会排到下一轮；回复任务卡时，以被回复的任务为准。'],
       actions: [0, 1],
     },
@@ -133,9 +141,11 @@ export function taskListCard(
   projects: { key: string; name: string }[],
   selectedTaskId: string | null | undefined,
   page: number,
+  chat?: string,
 ) {
   const tasks = store
     .list(owner)
+    .filter((task) => !chat || store.conversations.get(task.conversation_id).chat_id === chat)
     .sort((a, b) => b.updated_at - a.updated_at || b.task_id.localeCompare(a.task_id));
   const pages = Math.min(500, Math.max(1, Math.ceil(tasks.length / TASKS_PER_PAGE)));
   if (!Number.isSafeInteger(page) || page < 0 || page >= pages || page > 499)
@@ -165,7 +175,7 @@ export function taskListCard(
         {
           label: '项目',
           value: shortText(
-            projects.find((p) => p.key === task.project_key)?.name ?? task.project_key,
+            projects.find((p) => p.key === task.project_key)?.name ?? task.project_key ?? '无项目',
             80,
           ),
         },

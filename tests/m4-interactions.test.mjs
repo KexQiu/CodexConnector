@@ -206,6 +206,7 @@ describe('M4 actual SQLite, WebSocket RPC and Feishu business routing; simulated
     workers.push(worker);
     await worker.start();
     task = store.submit({
+      chatId: credentials.testChatId,
       owner: configuredOwner(config),
       requestKey: 'one',
       projectKey: 'p',
@@ -694,7 +695,7 @@ describe('M4 actual SQLite, WebSocket RPC and Feishu business routing; simulated
     await phone(`/打断 ${task.task_id}`);
     await worker.tickInteractions();
     expect(store.get(task.task_id).status).toBe('running');
-    expect(store.diagnostics().locks).toBe(2);
+    expect(store.diagnostics().locks).toBe(3);
     remoteStatus = 'interrupted';
     event('turn/completed', { threadId: 'thread-1', turn: turn() });
     await wait(() => store.get(task.task_id).status === 'interrupted');
@@ -732,7 +733,7 @@ describe('M4 actual SQLite, WebSocket RPC and Feishu business routing; simulated
     workers.push(worker);
     await worker.start();
     expect(store.get(task.task_id).status).toBe('unknown');
-    expect(store.diagnostics().locks).toBe(2);
+    expect(store.diagnostics().locks).toBe(3);
     remoteStatus = 'completed';
     await worker.recover();
     expect(store.get(task.task_id).status).toBe('completed');
@@ -770,7 +771,7 @@ describe('M4 actual SQLite, WebSocket RPC and Feishu business routing; simulated
       expect(worker.rpc.isReady).toBe(false);
       expect(worker.rpc.disconnectReason).toBe('RPC connection closed');
       expect(store.get(task.task_id).status).toBe('unknown');
-      expect(store.diagnostics().locks).toBe(2);
+      expect(store.diagnostics().locks).toBe(3);
       expect(cards).toHaveLength(1);
       expect(messages.filter((m) => m.method === 'turn/start')).toHaveLength(1);
     } finally {

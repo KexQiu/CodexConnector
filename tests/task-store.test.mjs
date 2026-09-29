@@ -107,7 +107,13 @@ describe('M2 durable state invariants', () => {
     const second = submit({ requestKey: 'req-2', cwd: directory + '/other' });
     store.unknown(first.task_id, 'lost_response');
     expect(store.claim(second.task_id, 'epoch-2')).toBeNull();
-    expect(db.prepare('SELECT count(*) FROM execution_locks').pluck().get()).toBe(2);
+    expect(
+      db.prepare('SELECT lock_key FROM execution_locks ORDER BY lock_key').pluck().all(),
+    ).toEqual([
+      `checkout:${directory}`,
+      `conversation:${first.conversation_id}`,
+      'thread:thread-1',
+    ]);
     store.recordEvent(event());
     expect(store.get(first.task_id).status).toBe('completed');
     expect(store.claim(second.task_id, 'epoch-2')).toBeTypeOf('string');
@@ -171,7 +177,7 @@ describe('M2 durable state invariants', () => {
           prompt: 'Test',
         }).duplicate,
       ).toBe(true);
-      expect(restoredDb.prepare('SELECT count(*) FROM execution_locks').pluck().get()).toBe(2);
+      expect(restoredDb.prepare('SELECT count(*) FROM execution_locks').pluck().get()).toBe(3);
       expect(restoredDb.pragma('integrity_check', { simple: true })).toBe('ok');
     } finally {
       restoredDb.close();

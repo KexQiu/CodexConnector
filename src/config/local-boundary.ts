@@ -1,3 +1,4 @@
+import { projectlessDirectoryRoot } from '../conversations/directories.js';
 import { realpathSync } from 'node:fs';
 import { basename, dirname, join, relative, isAbsolute, sep } from 'node:path';
 import type { ProjectAccess } from './project-policy.js';
@@ -24,7 +25,7 @@ export function assertLocalConfigIsProtected(
   for (const project of projects) {
     if (project.remotePermissions?.mode !== 'workspace-write') continue;
     const root = canonicalControlPath(project.root);
-    for (const path of paths) {
+    for (const path of [...paths, projectlessDirectoryRoot()]) {
       const suffix = relative(root, canonicalControlPath(path));
       if (
         suffix === '' ||

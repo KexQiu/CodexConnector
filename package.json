@@ -23,6 +23,7 @@
     "config:check": "node --import tsx src/index.ts config-check",
     "check:sqlite": "node --import tsx scripts/check-sqlite.mjs",
     "gate:rpc": "node --import tsx scripts/gates/rpc.mjs",
+    "gate:projectless": "node --import tsx scripts/gates/projectless.mjs",
     "gate:feishu": "node --import tsx scripts/gates/feishu.mjs",
     "gate:tasks": "pnpm build && node --import tsx scripts/gates/tasks.mjs",
     "gate:gateway": "pnpm build && node --import tsx scripts/gates/gateway.mjs",

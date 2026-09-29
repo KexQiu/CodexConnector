@@ -4,8 +4,9 @@ import type { GatewayConfig } from '../config/schema.js';
 import { CodexRpcClient, RpcRejectedError, RpcTransportError } from '../codex/rpc-client.js';
 import { threadResultSchema, turnResultSchema, turnsPageSchema } from '../codex/schemas.js';
 import { isTerminal, type OwnerIdentity } from '../domain/model.js';
-import { canonicalDirectory, executableProject, checkoutRoot } from '../projects/store.js';
-import { assertThreadPolicy, executionPolicy } from './project-policy.js';
+import { canonicalDirectory } from '../projects/store.js';
+import { executionTarget } from '../conversations/execution.js';
+import { assertOrdinaryConfig } from '../conversations/server.js';
 import { OutboxStore } from './outbox.js';
 import { ownerKey, type TaskStore } from './store.js';
 import { durableTurnSchema, TaskError, type StoredTask } from './types.js';
@@ -22,8 +23,16 @@ export function configuredOwner(config: GatewayConfig): OwnerIdentity {
 }
 
 /** Connects to an independently owned server; never spawns or terminates that server. */
+export type OrdinaryBackend = {
+  readonly ready: boolean;
+  readonly endpoint: string | undefined;
+  readonly error: string | null;
+};
 export class TaskWorker {
   readonly rpc: CodexRpcClient;
+  private ordinaryRpc: CodexRpcClient | undefined;
+  private ordinaryInteractions: Interactions | undefined;
+  private ordinaryMetrics: MetricsPoller | undefined;
   private lease: string | undefined;
   private activeOperation: { id: string; method: string } | undefined;
   private fatal = false;
@@ -40,11 +49,19 @@ export class TaskWorker {
   constructor(
     readonly store: TaskStore,
     private readonly config: GatewayConfig,
+    private readonly ordinary?: OrdinaryBackend,
+    private readonly chatId = '',
   ) {
     this.owner = ownerKey(configuredOwner(config));
     this.metrics = new StatusMetrics(store, this.owner);
-    this.rpc = new CodexRpcClient({
-      endpoint: config.codex.endpoint,
+    this.rpc = this.connection(config.codex.endpoint, false);
+    this.interactions = new Interactions(store, config, this.rpc, this.owner);
+    this.controls = new TaskControls(store, this.owner);
+    this.metricsPoller = new MetricsPoller(this.metrics, this.rpc, config.projects);
+  }
+  private connection(endpoint: string, projectless: boolean) {
+    return new CodexRpcClient({
+      endpoint,
       beforeRequest: (request) => {
         if (this.activeOperation?.method === request.method)
           this.store.beforeWire(this.activeOperation.id, request.connectionEpoch, request.id);
@@ -58,25 +75,52 @@ export class TaskWorker {
           if (closed.success) this.subscribedThreads.delete(closed.data.threadId);
         }
         this.store.recordEvent(notification);
-        this.interactions.notification(notification);
+        (projectless ? this.ordinaryInteractions : this.interactions)?.notification(notification);
       },
-      onServerRequest: (request) => this.interactions.receive(request),
+      onServerRequest: (request) => {
+        const interactions = projectless ? this.ordinaryInteractions : this.interactions;
+        return interactions!.receive(request);
+      },
       onDisconnect: () => {
-        this.subscribedThreads.clear();
         try {
-          this.interactions.disconnect();
-          this.controls.recover();
-          for (const task of this.store.list(this.owner))
+          (projectless ? this.ordinaryInteractions : this.interactions)?.disconnect();
+          this.controls?.recover(projectless);
+          for (const task of this.store.list(this.owner)) {
+            if ((task.project_key === null) !== projectless) continue;
+            if (task.thread_id) this.subscribedThreads.delete(task.thread_id);
             if (['starting', 'running'].includes(task.status))
               this.store.unknown(task.task_id, 'rpc_disconnected');
+          }
         } catch {
           this.fatal = true;
         }
       },
     });
-    this.interactions = new Interactions(store, config, this.rpc, this.owner);
-    this.controls = new TaskControls(store, this.owner);
-    this.metricsPoller = new MetricsPoller(this.metrics, this.rpc, config.projects);
+  }
+  rpcFor(task: StoredTask) {
+    return task.project_key === null ? this.ordinaryRpc : this.rpc;
+  }
+  projectlessAvailable() {
+    return this.config.projectless?.enabled !== false && !!this.ordinary?.ready;
+  }
+  projectlessReason() {
+    return this.ordinary?.error ?? '普通聊天能力尚未验证或后端未就绪，请在本机检查';
+  }
+  async connectOrdinary() {
+    if (!this.ordinary?.ready || !this.ordinary.endpoint || this.ordinaryRpc?.isReady) return;
+    this.ordinaryMetrics?.close();
+    this.ordinaryRpc?.close();
+    const rpc = this.connection(this.ordinary.endpoint, true);
+    this.ordinaryRpc = rpc;
+    this.ordinaryInteractions = new Interactions(this.store, this.config, rpc, this.owner, true);
+    this.interactions.delegate = this.ordinaryInteractions;
+    this.ordinaryMetrics = new MetricsPoller(this.metrics, rpc, []);
+    try {
+      const initialized = await rpc.connect();
+      this.ordinaryMetrics.codexHome = initialized.codexHome;
+    } catch {
+      rpc.close();
+    }
   }
 
   async start() {
@@ -86,6 +130,7 @@ export class TaskWorker {
       new OutboxStore(this.store.db).recoverExpired();
       const initialized = await this.rpc.connect();
       this.metricsPoller.codexHome = initialized.codexHome;
+      await this.connectOrdinary();
       await this.recover();
     } catch (error) {
       this.close();
@@ -94,32 +139,32 @@ export class TaskWorker {
   }
   close() {
     this.metricsPoller.close();
+    this.ordinaryMetrics?.close();
+    this.ordinaryRpc?.close();
     this.rpc.close();
     if (this.lease) {
       this.store.releaseWorker(this.lease);
       this.lease = undefined;
     }
   }
-  private metricsTarget(taskId?: string, projectKey?: string) {
+  private metricsTarget(taskId?: string, projectKey?: string | null) {
     if (projectKey) return { threadId: null, projectKey };
-    const context = this.store.db
-      .prepare('SELECT project_key,task_id FROM user_context WHERE owner_key=?')
-      .get(this.owner);
-    const selected = z
-      .object({ project_key: z.string(), task_id: z.string().nullable() })
-      .optional()
-      .parse(context);
+    const selected = this.store.conversations.context(this.owner, this.chatId);
     const id = taskId ?? selected?.task_id;
     const task = id ? this.store.get(id) : null;
     if (task && task.owner_key !== this.owner) throw new TaskError('会话无权限');
     return {
       threadId: task?.thread_id ?? null,
-      projectKey: task?.project_key ?? selected?.project_key,
+      projectKey: task?.project_key ?? selected?.project_key ?? undefined,
+      projectless: task ? task.project_key === null : selected?.scope_kind === 'projectless',
     };
   }
-  async refreshMetrics(taskId?: string, projectKey?: string) {
+  async refreshMetrics(taskId?: string, projectKey?: string | null) {
     const target = this.metricsTarget(taskId, projectKey);
-    await this.metricsPoller.refreshSession(target.threadId, target.projectKey);
+    await (target.projectless ? this.ordinaryMetrics : this.metricsPoller)?.refreshSession(
+      target.threadId,
+      target.projectKey,
+    );
   }
   async refreshQuota() {
     await this.metricsPoller.refreshAccount();
@@ -127,7 +172,9 @@ export class TaskWorker {
   pollMetrics() {
     if (this.metricsReading) return;
     const target = this.metricsTarget();
-    this.metricsReading = this.metricsPoller
+    this.metricsReading = (
+      target.projectless ? (this.ordinaryMetrics ?? this.metricsPoller) : this.metricsPoller
+    )
       .poll(target.threadId, Date.now(), target.projectKey)
       .catch(() => {
         /* Optional display reads must not disable task execution. */
@@ -141,17 +188,19 @@ export class TaskWorker {
       throw new TaskError('worker 未就绪，停止派发');
   }
   private policy(task: StoredTask) {
-    return executionPolicy(
-      executableProject(this.config.projects, task.project_key, task.cwd),
-      task.cwd,
-    );
+    return executionTarget(this.store, this.config, task).policy;
   }
   private async verifyProjectTools(task: StoredTask) {
-    if (!executableProject(this.config.projects, task.project_key, task.cwd).remotePermissions)
+    const target = executionTarget(this.store, this.config, task);
+    const rpc = this.rpcFor(task);
+    if (!rpc?.isReady) throw new TaskError('执行后端未就绪');
+    if (target.kind === 'projectless') {
+      if (!this.projectlessAvailable()) throw new TaskError(this.projectlessReason());
+      await assertOrdinaryConfig(rpc, task.cwd);
       return;
-    // MCP tools run outside the command sandbox. Inspect the project layer as well
-    // as the service defaults; a newly introduced server must not bypass local caps.
-    const effective = await this.rpc.request(
+    }
+    if (!target.project.remotePermissions) return;
+    const effective = await rpc.request(
       'config/read',
       { cwd: task.cwd, includeLayers: false },
       z.object({
@@ -190,31 +239,30 @@ export class TaskWorker {
     }
   }
   private async dispatchQueued(): Promise<StoredTask | null> {
-    const queued = this.store
-      .list(this.owner)
-      .filter((entry) => entry.status === 'queued')
-      .sort((a, b) => a.created_at - b.created_at || a.task_id.localeCompare(b.task_id));
+    const queued = this.store.queued(this.owner);
     let selected: { task: StoredTask; operation: string } | undefined;
     for (const task of queued) {
       let root: string;
       try {
-        executableProject(this.config.projects, task.project_key, task.cwd);
-        root = checkoutRoot(task.cwd);
+        root = executionTarget(this.store, this.config, task).root;
       } catch {
         this.store.fail(task.task_id, 'thread_start', 'project_not_writable');
         return this.store.get(task.task_id);
       }
-      const operation = this.store.claim(task.task_id, this.rpc.connectionEpoch, {
+      const rpc = this.rpcFor(task);
+      if (!rpc?.isReady || (task.project_key === null && !this.projectlessAvailable())) continue;
+      const operation = this.store.claim(task.task_id, rpc.connectionEpoch, {
         maxConcurrentTasks: this.config.maxConcurrentTasks,
         checkoutRoot: root,
       });
       if (operation) {
-        selected = { task, operation };
+        selected = { task: this.store.get(task.task_id), operation };
         break;
       }
     }
     if (!selected) return null;
     const { task } = selected;
+    const rpc = this.rpcFor(task)!;
     let { operation } = selected;
     let phase: 'thread_start' | 'turn_start' = 'thread_start';
     try {
@@ -228,7 +276,7 @@ export class TaskWorker {
       if (task.thread_id) this.store.ownedThread(task.thread_id, this.owner);
       const response = task.thread_id
         ? await this.mutating(operation, 'thread/resume', () =>
-            this.rpc.request(
+            rpc.request(
               'thread/resume',
               { ...this.policy(task).thread, threadId: task.thread_id ?? '', excludeTurns: true },
               threadResultSchema,
@@ -236,7 +284,7 @@ export class TaskWorker {
             ),
           )
         : await this.mutating(operation, 'thread/start', () =>
-            this.rpc.request(
+            rpc.request(
               'thread/start',
               { ...this.policy(task).thread, historyMode: 'legacy', ephemeral: false },
               threadResultSchema,
@@ -247,11 +295,7 @@ export class TaskWorker {
       if (canonicalDirectory(response.thread.cwd) !== task.cwd)
         throw new TaskError('服务端执行目录不匹配');
       try {
-        assertThreadPolicy(
-          executableProject(this.config.projects, task.project_key, task.cwd),
-          task.cwd,
-          response,
-        );
+        executionTarget(this.store, this.config, task).assert(response);
       } catch {
         this.store.fail(task.task_id, 'thread_start', 'project_policy_mismatch');
         return this.store.get(task.task_id);
@@ -263,7 +307,7 @@ export class TaskWorker {
         task.task_id,
         response.thread.id,
         task.cwd,
-        this.rpc.connectionEpoch,
+        rpc.connectionEpoch,
       );
       this.metrics.metadata(response.thread.id, response.thread);
       phase = 'turn_start';
@@ -273,7 +317,7 @@ export class TaskWorker {
         return this.store.get(task.task_id);
       }
       const result = await this.mutating(operation, 'turn/start', () =>
-        this.rpc.request(
+        rpc.request(
           'turn/start',
           {
             threadId: response.thread.id,
@@ -324,9 +368,11 @@ export class TaskWorker {
       if (!['starting', 'running', 'unknown'].includes(task.status) || !task.thread_id) continue;
       // Missing turn_id is not evidence of non-execution. Preserve the lock, never guess a turn by recency.
       if (!task.turn_id) continue;
+      const rpc = this.rpcFor(task);
+      if (!rpc?.isReady) continue;
       try {
         this.store.ownedThread(task.thread_id, this.owner);
-        const metadata = await this.rpc.request(
+        const metadata = await rpc.request(
           'thread/read',
           { threadId: task.thread_id, includeTurns: false },
           threadResultSchema,
@@ -336,15 +382,15 @@ export class TaskWorker {
         let subscribed = false;
         let unavailableReason = 'subscription_unavailable';
         try {
-          executableProject(this.config.projects, task.project_key, task.cwd);
+          executionTarget(this.store, this.config, task);
           if (this.subscribedThreads.has(task.thread_id)) {
             subscribed = true;
           } else {
             await this.verifyProjectTools(task);
-            const operation = this.store.recoveryOperation(task.task_id, this.rpc.connectionEpoch);
+            const operation = this.store.recoveryOperation(task.task_id, rpc.connectionEpoch);
             try {
               const resumed = await this.mutating(operation, 'thread/resume', () =>
-                this.rpc.request(
+                rpc.request(
                   'thread/resume',
                   {
                     ...this.policy(task).thread,
@@ -356,11 +402,7 @@ export class TaskWorker {
               );
               if (resumed.thread.id !== task.thread_id || resumed.thread.cwd !== task.cwd)
                 throw new TaskError('恢复会话不匹配');
-              assertThreadPolicy(
-                executableProject(this.config.projects, task.project_key, task.cwd),
-                task.cwd,
-                resumed,
-              );
+              executionTarget(this.store, this.config, task).assert(resumed);
               this.store.settleOperation(operation, 'known');
               this.subscribedThreads.add(task.thread_id);
               subscribed = true;
@@ -384,7 +426,7 @@ export class TaskWorker {
           /* Permission revoked or directory gone: read history only. */
         }
         if (metadata.thread.historyMode === 'legacy') {
-          const result = await this.rpc.request(
+          const result = await rpc.request(
             'thread/read',
             { threadId: task.thread_id, includeTurns: true },
             threadResultSchema,
@@ -400,7 +442,7 @@ export class TaskWorker {
           const seen = new Set<string>();
           let found = false;
           for (let page = 0; page < 100; page++) {
-            const result: z.infer<typeof turnsPageSchema> = await this.rpc.request(
+            const result: z.infer<typeof turnsPageSchema> = await rpc.request(
               'thread/turns/list',
               { threadId: task.thread_id, cursor, limit: 100, itemsView: 'full' },
               turnsPageSchema,
@@ -428,9 +470,13 @@ export class TaskWorker {
   }
   async tickInteractions() {
     this.ensureReady();
+    await this.connectOrdinary();
     await this.interactions.tick();
-    await this.controls.next(this.rpc, this.config, (id, method, call) =>
-      this.mutating(id, method, call),
+    await this.ordinaryInteractions?.tick();
+    await this.controls.next(
+      (task) => this.rpcFor(task),
+      this.config,
+      (id, method, call) => this.mutating(id, method, call),
     );
   }
   stopDispatch() {
@@ -440,7 +486,12 @@ export class TaskWorker {
     this.stopping = true;
     for (const task of this.store.list(this.owner)) {
       if (task.status === 'queued') this.store.cancelQueued(task.task_id);
-      if (task.status === 'running' && task.thread_id && task.turn_id && this.rpc.isReady) {
+      if (
+        task.status === 'running' &&
+        task.thread_id &&
+        task.turn_id &&
+        this.rpcFor(task)?.isReady
+      ) {
         this.store.ownedThread(task.thread_id, this.owner);
         this.controls.enqueue(
           `desktop-stop:${task.task_id}:${task.turn_id}`,
@@ -451,12 +502,14 @@ export class TaskWorker {
     }
     const deadline = Date.now() + timeoutMs;
     while (
-      this.rpc.isReady &&
+      (this.rpc.isReady || this.ordinaryRpc?.isReady) &&
       Date.now() < deadline &&
       this.store.list(this.owner).some((t) => t.status === 'running')
     ) {
-      await this.controls.next(this.rpc, this.config, (id, method, call) =>
-        this.mutating(id, method, call),
+      await this.controls.next(
+        (task) => this.rpcFor(task),
+        this.config,
+        (id, method, call) => this.mutating(id, method, call),
       );
       await delay(50);
     }

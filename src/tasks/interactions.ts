@@ -5,7 +5,7 @@ import type { CodexRpcClient, RpcNotification, RpcServerRequest } from '../codex
 import type { McpServerElicitationRequestResponse } from '../codex/generated/v2/McpServerElicitationRequestResponse.js';
 import type { DynamicToolCallResponse } from '../codex/generated/v2/DynamicToolCallResponse.js';
 import { isTerminal } from '../domain/model.js';
-import { executableProject } from '../projects/store.js';
+import { executionTarget } from '../conversations/execution.js';
 import { assertProjectInteraction } from './project-policy.js';
 import type { TaskStore } from './store.js';
 import { TaskError } from './types.js';
@@ -47,13 +47,21 @@ export const pendingInteractions = (store: TaskStore, taskId: string) =>
 
 /** Durable intent plus a live, epoch-bound request handle. Handles are never reconstructed after restart. */
 export class Interactions {
+  delegate: Interactions | undefined;
   private readonly live = new Map<string, RpcServerRequest>();
   constructor(
     readonly store: TaskStore,
     private readonly config: GatewayConfig,
     private readonly rpc: CodexRpcClient,
     private readonly owner: string,
+    private readonly projectless = false,
   ) {}
+  private assertInteraction(taskId: string, method: string) {
+    const target = executionTarget(this.store, this.config, this.store.get(taskId));
+    if (target.kind === 'project') assertProjectInteraction(target.project, method);
+    else if (method !== 'item/tool/requestUserInput')
+      throw new TaskError('普通聊天不能批准工具或权限扩展');
+  }
   private waiting(taskId: string) {
     const pending = pendingInteractions(this.store, taskId);
     const approval = +pending.some((r) => r.method !== 'item/tool/requestUserInput');
@@ -99,10 +107,7 @@ export class Interactions {
     const task = tasks[0]!;
     let parsed;
     try {
-      assertProjectInteraction(
-        executableProject(this.config.projects, task.project_key, task.cwd),
-        request.method,
-      );
+      this.assertInteraction(task.task_id, request.method);
       parsed = parseInteraction(request.method, request.params, task.cwd);
       if (!choices(parsed).length) throw new TaskError('没有受支持的审批选项');
       if (parsed.method === 'item/fileChange/requestApproval') {
@@ -226,9 +231,9 @@ export class Interactions {
   private rows(): InteractionRow[] {
     return this.store.db
       .prepare(
-        "SELECT a.* FROM approvals a JOIN tasks t USING(task_id) WHERE t.owner_key=? AND a.state='pending'",
+        "SELECT a.* FROM approvals a JOIN tasks t USING(task_id) WHERE t.owner_key=? AND a.state='pending' AND (t.project_key IS NULL)=?",
       )
-      .all(this.owner)
+      .all(this.owner, +this.projectless)
       .map((r) => rowSchema.parse(r));
   }
   disconnect() {
@@ -262,6 +267,7 @@ export class Interactions {
   find(shortId: string): InteractionRow {
     if (shortId.length < 8) throw new TaskError('审批 ID 至少 8 位');
     const rows = this.rows().filter((r) => r.approval_id.startsWith(shortId));
+    if (!rows.length && this.delegate) return this.delegate.find(shortId);
     if (rows.length !== 1) throw new TaskError('审批不存在、已失效或短 ID 不唯一');
     const row = rows[0]!;
     if (
@@ -357,10 +363,7 @@ export class Interactions {
       try {
         const choice = decisionSchema.parse(row.decision);
         if (!['decline', 'cancel'].includes(choice))
-          assertProjectInteraction(
-            executableProject(this.config.projects, task.project_key, task.cwd),
-            row.method,
-          );
+          this.assertInteraction(task.task_id, row.method);
         const parsed = parseInteraction(row.method, JSON.parse(row.payload!), task.cwd);
         response = interactionResponse(
           parsed,

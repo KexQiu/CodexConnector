@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type {
+  CheckResult,
   DesktopApi,
   DesktopSettings,
   DesktopSnapshot,
@@ -89,6 +90,10 @@ function App() {
   const [snapshot, setSnapshot] = useState<DesktopSnapshot | null>(null);
   const [settings, setSettings] = useState<DesktopSettings | null>(null);
   const [secret, setSecret] = useState('');
+  const [projectlessCheck, setProjectlessCheck] = useState<{
+    binary: string;
+    result: CheckResult;
+  } | null>(null);
   const secretRef = useRef('');
   const cache = useRef<DesktopDraftCache | null>(null);
   const [cacheState, setCacheState] = useState<DraftCacheState>('saved');
@@ -452,9 +457,11 @@ function App() {
           {startReason && <p>{startReason}</p>}
           {noProjects && (
             <p>
-              {settings.remoteProjectCreation.enabled
-                ? '本地项目列表为空。连接后可从飞书新建项目，也可以现在添加本地目录。'
-                : '当前没有本地项目。添加后才能向该项目发起任务；也可先应用连接配置，稍后添加。'}
+              {settings.projectless?.enabled !== false
+                ? '没有本地项目也能连接。普通聊天能力检查通过后，直接在飞书发送消息即可开始。'
+                : settings.remoteProjectCreation.enabled
+                  ? '本地项目列表为空。连接后可从飞书新建项目，也可以现在添加本地目录。'
+                  : '当前没有本地项目。添加后才能向该项目发起任务；也可先应用连接配置，稍后添加。'}
             </p>
           )}
           <div className="connection-hint-actions">
@@ -721,6 +728,76 @@ function App() {
             )}
           </div>
         </div>
+        <div className="remote-project-settings">
+          <div className="section-heading">
+            <span className="eyebrow">CONVERSATIONS</span>
+            <h2>无项目对话</h2>
+            <p>直接聊天，也可以从飞书的项目列表切换到「无项目」。</p>
+          </div>
+          <label className="toggle-label">
+            <input
+              type="checkbox"
+              checked={settings.projectless?.enabled !== false}
+              onChange={(event) =>
+                update({ ...settings, projectless: { enabled: event.target.checked } })
+              }
+            />
+            <span className="toggle" />
+            <span>允许无项目对话</span>
+          </label>
+          <p className="helper">
+            普通聊天禁止文件读写、命令和外部工具，仅允许内置时钟。与项目任务共用并发上限，同一会话按顺序执行。
+          </p>
+          <div className="action-row">
+            {button('检查普通聊天能力', () =>
+              run('检查普通聊天能力', async () => {
+                const binary = settings.codexBinary;
+                const result = await api.checkProjectless(binary);
+                setProjectlessCheck({ binary, result });
+                if (!result.ok) throw new Error(result.message);
+                inform(result.message);
+              }),
+            )}
+          </div>
+          <div
+            className={`check-feedback ${projectlessCheck?.binary === settings.codexBinary ? (projectlessCheck.result.ok ? 'success' : 'error') : ''}`}
+            role="status"
+          >
+            <strong>
+              {projectlessCheck?.binary === settings.codexBinary
+                ? projectlessCheck.result.ok
+                  ? '能力已验证'
+                  : '暂不可执行'
+                : '尚未检查'}
+            </strong>
+            <span>
+              {projectlessCheck?.binary === settings.codexBinary
+                ? projectlessCheck.result.message
+                : '请检查当前 Codex；版本更新后需重新验证。未通过时项目功能仍可使用。'}
+            </span>
+          </div>
+          {snapshot?.status.projectless && !stopped && (
+            <div
+              className={`check-feedback ${snapshot.status.projectless.ready ? 'success' : 'error'}`}
+              role="status"
+            >
+              <strong>
+                {snapshot.status.projectless.enabled
+                  ? snapshot.status.projectless.ready
+                    ? '普通聊天后端在线'
+                    : '普通聊天暂不可用'
+                  : '无项目对话已关闭'}
+              </strong>
+              <span>
+                {snapshot.status.projectless.error ??
+                  '后端状态由当前生效配置决定；修改后请停止并应用。'}
+              </span>
+            </div>
+          )}
+          <p className="helper">
+            设置自动缓存，停止连接后应用才生效。关闭后保留历史，拒绝新建和续聊。
+          </p>
+        </div>
         <p className="helper">
           自动读取本机 Codex 和远程创建的项目；回到 App 或每隔 30 秒刷新。
           本机添加的项目需授权并应用；远程项目创建成功后即可按预设权限使用。
@@ -733,8 +810,8 @@ function App() {
         {settings.projects.length === 0 ? (
           <div className="empty">
             <Icon name="projects" />
-            <h3>添加第一个本地项目</h3>
-            <p>选择一个目录，然后决定是否允许飞书发起任务。</p>
+            <h3>尚未添加本地项目</h3>
+            <p>普通聊天无需选择目录；需要处理文件时，再添加项目并授权。</p>
           </div>
         ) : (
           <div className="project-list">

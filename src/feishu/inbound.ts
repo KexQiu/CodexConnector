@@ -5,12 +5,16 @@ import type { TaskStore } from '../tasks/store.js';
 import { ownerKey } from '../tasks/store.js';
 import { TaskError } from '../tasks/types.js';
 import { silentLogger, type FeishuCredentials } from './credentials.js';
+import { CardViews } from './card-views.js';
 import { uiActionSchema } from './conversation-ui.js';
 
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 const id = z.string().min(1).max(256);
 export const inboundPayload = z.object({
   kind: z.enum(['message', 'action', 'menu']),
+  sourceOutboxId: id.nullable().optional(),
+  replyOutboxId: id.nullable().optional(),
+  replyCardPending: z.boolean().optional(),
   text: z.string().max(100_000),
   messageId: id,
   replyTo: id.nullable(),
@@ -58,6 +62,7 @@ const menuSchema = z.object({
   event_key: z.string(),
 });
 const actionRow = z.object({
+  outbox_id: id,
   task_id: id.nullable(),
   owner_key: id,
   chat_id: id,
@@ -135,8 +140,12 @@ export class FeishuInbox {
       if (m.message_type !== 'text') return { outcome: 'ignored' };
       const content = z.object({ text: z.string().max(100_000) }).parse(JSON.parse(m.content));
       if (this.prefix && !content.text.startsWith(this.prefix)) return { outcome: 'ignored' };
+      const views = new CardViews(this.store, this.owner, this.credentials.testChatId);
+      const quoted = m.parent_id ? views.visible(m.parent_id) : null;
       payload = {
         kind,
+        replyOutboxId: quoted?.outbox_id ?? null,
+        replyCardPending: quoted ? !views.current(quoted) : false,
         text: content.text.slice(this.prefix.length).trim(),
         messageId: m.message_id,
         replyTo: m.parent_id ?? null,
@@ -171,6 +180,18 @@ export class FeishuInbox {
           )
           .get(data.action.value.gatewayNonce),
       );
+      // Event redelivery remains a duplicate even after its card revision is retired.
+      const duplicate = this.store.db
+        .prepare(
+          `SELECT command_id FROM feishu_commands
+        WHERE owner_key=? AND chat_id=? AND inbox_id IN (SELECT inbox_id FROM inbox WHERE event_key=?)`,
+        )
+        .get(
+          this.owner,
+          this.credentials.testChatId,
+          digest(`${this.owner}:feishu:action:${data.event_id}`),
+        );
+      if (duplicate) return { outcome: 'duplicate' };
       if (
         !action.success ||
         action.data.owner_key !== this.owner ||
@@ -181,6 +202,10 @@ export class FeishuInbox {
         action.data.expires_at <= Date.now()
       )
         return { outcome: 'expired-or-invalid' };
+      const views = new CardViews(this.store, this.owner, this.credentials.testChatId);
+      const source = views.get(action.data.outbox_id);
+      if (source && !views.current(source))
+        return { outcome: 'expired-or-invalid', reason: 'card-updating' };
       if (action.data.action === 'approval') {
         const active = this.store.db
           .prepare(
@@ -192,6 +217,7 @@ export class FeishuInbox {
       payload = {
         kind,
         text: '',
+        sourceOutboxId: action.data.outbox_id,
         messageId: data.context.open_message_id,
         replyTo: null,
         taskId: action.data.task_id,
@@ -216,6 +242,10 @@ export class FeishuInbox {
           'details',
           'select',
           'create_project',
+          'projectless_sessions',
+          'projectless_new',
+          'back',
+          'quota',
         ].includes(action.data.action)
           ? `panel-action:${eventId}`
           : `action:${data.action.value.gatewayNonce}`;
@@ -282,7 +312,9 @@ export class FeishuInbox {
                 ? '操作已入队'
                 : result.outcome === 'duplicate'
                   ? '操作已接收，请勿重复点击'
-                  : '按钮已失效或无权限',
+                  : 'reason' in result && result.reason === 'card-updating'
+                    ? '卡片正在更新或核对中，请稍后再试'
+                    : '按钮已失效或无权限',
           },
         });
       },

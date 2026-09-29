@@ -115,7 +115,9 @@ export class FeishuSender {
           const task = this.store.get(row.task_id);
           if (task.owner_key !== this.owner) throw new Error('Outbox ownership mismatch');
           const projectName =
-            this.projects.find((p) => p.key === task.project_key)?.name ?? task.project_key;
+            this.projects.find((p) => p.key === task.project_key)?.name ??
+            task.project_key ??
+            '无项目';
           title = `${stateNames[task.status]} · ${shortText(projectName, 40)}`;
           layout = taskLayout(this.store, task, projectName);
           const pending = pendingInteractions(this.store, task.task_id);
@@ -166,9 +168,9 @@ export class FeishuSender {
               '存在不支持或不满足目录/展示约束的交互请求，已明确拒绝，未自动授权。',
             );
           const selectedId = this.store.db
-            .prepare('SELECT task_id FROM user_context WHERE owner_key=?')
+            .prepare('SELECT task_id FROM user_context WHERE owner_key=? AND chat_id=?')
             .pluck()
-            .get(this.owner);
+            .get(this.owner, this.credentials.testChatId);
           const selected = typeof selectedId === 'string' ? this.store.get(selectedId) : null;
           if (!sameConversation(task, selected)) addButton('select', '接着聊', task.task_id);
           if (resultPages(this.store.result(task.task_id)).length > 1)
@@ -188,6 +190,7 @@ export class FeishuSender {
             addButton(button.action, button.label, button.taskId, button satisfies NoticeButton);
           }
         }
+        if (row.view_parent_id) addButton('back', '返回上一层', null);
         const inlineIndexes = new Set(
           layout?.sections.flatMap((section) => section.actions ?? []) ?? [],
         );

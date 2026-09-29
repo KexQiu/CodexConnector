@@ -35,6 +35,7 @@ export async function startServer({
   codexHome,
   extraConfig = [],
   binary = process.env.CODEX_BINARY ?? baseline.codexBinary,
+  environment = process.env,
 }) {
   const home =
     codexHome ??
@@ -55,7 +56,7 @@ export async function startServer({
     'notify=[]',
     ...extraConfig.flatMap((entry) => ['-c', entry]),
   ];
-  const env = { ...process.env, CODEX_HOME: home };
+  const env = { ...environment, CODEX_HOME: home };
   if (homeMode === 'isolated') {
     for (const name of Object.keys(env)) {
       if (/TOKEN|API_KEY|SECRET|PASSWORD|CODEX_AUTH|CODEX_ACCESS/i.test(name)) delete env[name];

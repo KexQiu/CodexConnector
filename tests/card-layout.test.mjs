@@ -40,7 +40,7 @@ describe('native card hierarchy and durable delivery', () => {
     metrics = new StatusMetrics(store, ownerKey(owner));
     config = { projects: [{ key: 'p', root: dir, name: '测试项目', remoteWrite: true }] };
     panel = new ContextPanel(store, config, metrics.owner, credentials.testChatId);
-    store.setContext(metrics.owner, 'p', null);
+    store.setContext(metrics.owner, 'p', null, credentials.testChatId);
   });
   afterEach(() => {
     db.close();
@@ -48,6 +48,7 @@ describe('native card hierarchy and durable delivery', () => {
   });
   function running() {
     const { task } = store.submit({
+      chatId: credentials.testChatId,
       owner,
       requestKey: 'task',
       projectKey: 'p',
@@ -57,7 +58,7 @@ describe('native card hierarchy and durable delivery', () => {
     store.claim(task.task_id, 'e');
     store.bindThread(task.task_id, 'thread', dir, 'e');
     store.bindTurn(task.task_id, { id: 'turn', status: 'inProgress', items: [] });
-    store.setContext(metrics.owner, 'p', task.task_id);
+    store.setContext(metrics.owner, 'p', task.task_id, credentials.testChatId);
     metrics.metadata('thread', { model: 'fixture', reasoningEffort: 'xhigh' }, at);
     metrics.notification(
       {

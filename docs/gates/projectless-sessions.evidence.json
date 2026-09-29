@@ -1,0 +1,770 @@
+{
+  "runId": "2026-09-28T09-57-12.627Z-9722a2d5",
+  "date": "2026-09-28T09:57:12.628Z",
+  "baseline": {
+    "codex": "codex-cli 0.158.0-alpha.2.1",
+    "node": "v24.15.0",
+    "platform": "darwin",
+    "arch": "arm64"
+  },
+  "model": "gpt-6-astra",
+  "configHash": "1b78519c6b114c54762309ce576a62b2ce0b332199b540cf4568e7df9717eea9",
+  "config": {
+    "features.shell_tool": false,
+    "features.unified_exec": false,
+    "features.shell_snapshot": false,
+    "features.apps": false,
+    "features.hooks": false,
+    "features.plugins": false,
+    "features.remote_plugin": false,
+    "features.multi_agent": false,
+    "features.multi_agent_v2": false,
+    "features.memories": false,
+    "features.browser_use": false,
+    "features.browser_use_external": false,
+    "features.in_app_browser": false,
+    "features.computer_use": false,
+    "features.image_generation": false,
+    "features.code_mode": false,
+    "features.code_mode_host": false,
+    "features.code_mode_only": false,
+    "features.js_repl": false,
+    "features.js_repl_tools_only": false,
+    "features.goals": false,
+    "features.view_image": false,
+    "features.workspace_dependencies": false,
+    "features.worktrees": false,
+    "features.skill_search": false,
+    "features.skill_mcp_dependency_install": false,
+    "features.sleep_tool": false,
+    "features.tool_suggest": false,
+    "features.in_app_local_automation": false,
+    "agents.enabled": false,
+    "features.skip_host_skill_discovery": true,
+    "web_search": "disabled",
+    "notify": [],
+    "project_doc_max_bytes": 0
+  },
+  "policyRevision": "ordinary-chat-clock-v1",
+  "exceptions": ["clock.curr_time: built-in UTC clock only; user approved 2026-09-28"],
+  "scope": "real isolated Codex; controlled local model; no account, Feishu or production data",
+  "productionEnablement": false,
+  "cases": [
+    {
+      "name": "hook-positive-control-effective-config",
+      "status": "PASS",
+      "evidence": {
+        "disabledFeatures": [
+          "shell_tool",
+          "unified_exec",
+          "shell_snapshot",
+          "apps",
+          "remote_plugin",
+          "multi_agent",
+          "multi_agent_v2",
+          "memories",
+          "browser_use",
+          "browser_use_external",
+          "in_app_browser",
+          "computer_use",
+          "image_generation",
+          "code_mode",
+          "code_mode_host",
+          "code_mode_only",
+          "js_repl",
+          "js_repl_tools_only",
+          "goals",
+          "view_image",
+          "workspace_dependencies",
+          "worktrees",
+          "skill_search",
+          "skill_mcp_dependency_install",
+          "sleep_tool",
+          "tool_suggest",
+          "in_app_local_automation"
+        ],
+        "agentsEnabled": false,
+        "hooksEnabled": true,
+        "pluginsEnabled": true,
+        "webSearch": "disabled",
+        "enabledMcpCount": 0
+      }
+    },
+    {
+      "name": "plugin-positive-control",
+      "status": "PASS",
+      "evidence": {
+        "installedInIsolatedHome": true,
+        "pluginMcpStarted": true
+      }
+    },
+    {
+      "name": "hooks-positive-control",
+      "status": "PASS",
+      "evidence": {
+        "events": ["SessionStart", "UserPromptSubmit", "Stop"],
+        "observed": ["SessionStart", "UserPromptSubmit", "Stop"],
+        "fixtureOnlyTrustOverride": true
+      }
+    },
+    {
+      "name": "new-effective-config",
+      "status": "PASS",
+      "evidence": {
+        "disabledFeatures": [
+          "shell_tool",
+          "unified_exec",
+          "shell_snapshot",
+          "apps",
+          "hooks",
+          "plugins",
+          "remote_plugin",
+          "multi_agent",
+          "multi_agent_v2",
+          "memories",
+          "browser_use",
+          "browser_use_external",
+          "in_app_browser",
+          "computer_use",
+          "image_generation",
+          "code_mode",
+          "code_mode_host",
+          "code_mode_only",
+          "js_repl",
+          "js_repl_tools_only",
+          "goals",
+          "view_image",
+          "workspace_dependencies",
+          "worktrees",
+          "skill_search",
+          "skill_mcp_dependency_install",
+          "sleep_tool",
+          "tool_suggest",
+          "in_app_local_automation"
+        ],
+        "agentsEnabled": false,
+        "hooksEnabled": false,
+        "pluginsEnabled": false,
+        "webSearch": "disabled",
+        "enabledMcpCount": 0
+      }
+    },
+    {
+      "name": "thread-policy",
+      "status": "PASS",
+      "evidence": {
+        "environments": [],
+        "approvalPolicy": "never",
+        "sandbox": {
+          "type": "readOnly",
+          "networkAccess": false
+        }
+      }
+    },
+    {
+      "name": "continuation-history",
+      "status": "PASS",
+      "evidence": {
+        "fixtureOnly": true
+      }
+    },
+    {
+      "name": "new-forced-multi-agent-list",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true,
+        "returnedAgentList": false
+      }
+    },
+    {
+      "name": "new-forced-shell-read",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "new-forced-shell-write",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "new-forced-memory-read",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "new-forced-legacy-shell",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "new-forced-bare-exec-read",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "new-forced-bare-file-patch",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "new-forced-js-repl",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "new-forced-bare-js-repl",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "new-forced-browser-host",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "new-forced-web-open",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "new-forced-file-patch",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "new-forced-wrapped-shell-read",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "new-forced-clock",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "new-forced-disabled-mcp",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "new-forced-wrapper-wait",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "new-forced-direct-clock",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": false,
+        "allowedClockException": true,
+        "returnedClockValue": true
+      }
+    },
+    {
+      "name": "new-plugin-disabled",
+      "status": "PASS",
+      "evidence": {
+        "installedFixtureMcpStarted": false
+      }
+    },
+    {
+      "name": "new-hooks-disabled",
+      "status": "PASS",
+      "evidence": {
+        "events": ["SessionStart", "UserPromptSubmit", "Stop"],
+        "executed": [],
+        "fixtureOnlyTrustOverride": true
+      }
+    },
+    {
+      "name": "restart-effective-config",
+      "status": "PASS",
+      "evidence": {
+        "disabledFeatures": [
+          "shell_tool",
+          "unified_exec",
+          "shell_snapshot",
+          "apps",
+          "hooks",
+          "plugins",
+          "remote_plugin",
+          "multi_agent",
+          "multi_agent_v2",
+          "memories",
+          "browser_use",
+          "browser_use_external",
+          "in_app_browser",
+          "computer_use",
+          "image_generation",
+          "code_mode",
+          "code_mode_host",
+          "code_mode_only",
+          "js_repl",
+          "js_repl_tools_only",
+          "goals",
+          "view_image",
+          "workspace_dependencies",
+          "worktrees",
+          "skill_search",
+          "skill_mcp_dependency_install",
+          "sleep_tool",
+          "tool_suggest",
+          "in_app_local_automation"
+        ],
+        "agentsEnabled": false,
+        "hooksEnabled": false,
+        "pluginsEnabled": false,
+        "webSearch": "disabled",
+        "enabledMcpCount": 0
+      }
+    },
+    {
+      "name": "resume-base-policy",
+      "status": "PASS",
+      "evidence": {
+        "sameThread": true,
+        "restoredMetadataEnvironments": [
+          {
+            "environmentId": "local",
+            "cwd": "<fixture>/workspace",
+            "runtimeWorkspaceRoots": ["<fixture>/workspace"]
+          }
+        ],
+        "approvalPolicy": "never",
+        "sandbox": {
+          "type": "readOnly",
+          "networkAccess": false
+        },
+        "mustResetEnvironmentsBeforeEveryTurn": true
+      }
+    },
+    {
+      "name": "restart-history",
+      "status": "PASS",
+      "evidence": {
+        "fixtureOnly": true
+      }
+    },
+    {
+      "name": "restart-forced-multi-agent-list",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true,
+        "returnedAgentList": false
+      }
+    },
+    {
+      "name": "restart-forced-shell-read",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "restart-forced-shell-write",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "restart-forced-memory-read",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "restart-forced-legacy-shell",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "restart-forced-bare-exec-read",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "restart-forced-bare-file-patch",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "restart-forced-js-repl",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "restart-forced-bare-js-repl",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "restart-forced-browser-host",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "restart-forced-web-open",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "restart-forced-file-patch",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "restart-forced-wrapped-shell-read",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "restart-forced-clock",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "restart-forced-disabled-mcp",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "restart-forced-wrapper-wait",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": true
+      }
+    },
+    {
+      "name": "restart-forced-direct-clock",
+      "status": "PASS",
+      "evidence": {
+        "outputCount": 1,
+        "explicitlyRejected": false,
+        "allowedClockException": true,
+        "returnedClockValue": true
+      }
+    },
+    {
+      "name": "restart-plugin-disabled",
+      "status": "PASS",
+      "evidence": {
+        "installedFixtureMcpStarted": false
+      }
+    },
+    {
+      "name": "restart-hooks-disabled",
+      "status": "PASS",
+      "evidence": {
+        "events": ["SessionStart", "UserPromptSubmit", "Stop"],
+        "executed": [],
+        "fixtureOnlyTrustOverride": true
+      }
+    },
+    {
+      "name": "new-tool-declarations",
+      "status": "PASS",
+      "evidence": {
+        "requestCount": 1,
+        "tools": [
+          "functions.exec",
+          "functions.exec/clock__curr_time",
+          "functions.request_user_input",
+          "functions.request_user_input_async",
+          "functions.wait"
+        ],
+        "forbidden": [],
+        "wrapperExecutorRejected": true
+      }
+    },
+    {
+      "name": "continuation-tool-declarations",
+      "status": "PASS",
+      "evidence": {
+        "requestCount": 1,
+        "tools": [
+          "functions.exec",
+          "functions.exec/clock__curr_time",
+          "functions.request_user_input",
+          "functions.request_user_input_async",
+          "functions.wait"
+        ],
+        "forbidden": [],
+        "wrapperExecutorRejected": true
+      }
+    },
+    {
+      "name": "new-negative-calls-tool-declarations",
+      "status": "PASS",
+      "evidence": {
+        "requestCount": 34,
+        "tools": [
+          "functions.exec",
+          "functions.exec/clock__curr_time",
+          "functions.request_user_input",
+          "functions.request_user_input_async",
+          "functions.wait"
+        ],
+        "forbidden": [],
+        "wrapperExecutorRejected": true
+      }
+    },
+    {
+      "name": "restart-tool-declarations",
+      "status": "PASS",
+      "evidence": {
+        "requestCount": 1,
+        "tools": [
+          "functions.exec",
+          "functions.exec/clock__curr_time",
+          "functions.request_user_input",
+          "functions.request_user_input_async",
+          "functions.wait"
+        ],
+        "forbidden": [],
+        "wrapperExecutorRejected": true
+      }
+    },
+    {
+      "name": "restart-negative-calls-tool-declarations",
+      "status": "PASS",
+      "evidence": {
+        "requestCount": 34,
+        "tools": [
+          "functions.exec",
+          "functions.exec/clock__curr_time",
+          "functions.request_user_input",
+          "functions.request_user_input_async",
+          "functions.wait"
+        ],
+        "forbidden": [],
+        "wrapperExecutorRejected": true
+      }
+    },
+    {
+      "name": "every-turn-empty-environments",
+      "status": "PASS",
+      "evidence": {
+        "checkedTurns": 38,
+        "nonEmptyTurns": 0,
+        "includesRecoveredTurns": true
+      }
+    },
+    {
+      "name": "fixture-side-effects",
+      "status": "PASS",
+      "evidence": {
+        "writeMarkerExists": false,
+        "disabledMcpStarted": false,
+        "fileCanaryInModelInput": false,
+        "memoryCanaryInModelInput": false
+      }
+    },
+    {
+      "name": "provider-integrity",
+      "status": "PASS",
+      "evidence": {
+        "requestCount": 72,
+        "errorCount": 0,
+        "unexpectedRequests": 0
+      }
+    }
+  ],
+  "cleanup": [
+    {
+      "ownedProcessExited": true,
+      "code": 0,
+      "signal": null
+    },
+    {
+      "ownedProcessExited": true,
+      "code": 0,
+      "signal": null
+    },
+    {
+      "ownedProcessExited": true,
+      "code": 0,
+      "signal": null
+    },
+    {
+      "providerClosed": true
+    },
+    {
+      "temporaryDirectoryRemoved": true
+    }
+  ],
+  "controlledStatus": "PASS",
+  "liveModel": {
+    "status": "PASS",
+    "cases": [
+      {
+        "name": "local-discovery",
+        "status": "PASS",
+        "evidence": {
+          "mcpCount": 3,
+          "skillsCount": 11,
+          "credentialsCopied": false
+        }
+      },
+      {
+        "name": "new-effective-policy",
+        "status": "PASS",
+        "evidence": {
+          "disabledFeatureCount": 29,
+          "enabledMcpCount": 0,
+          "agentsEnabled": false
+        }
+      },
+      {
+        "name": "new-chat",
+        "status": "PASS",
+        "evidence": {
+          "answerMatched": true,
+          "itemTypes": ["agentMessage", "userMessage"],
+          "emptyEnvironments": true,
+          "turnId": "01a0e772-828e-7b63-baf5-ae1f0a58edbb"
+        }
+      },
+      {
+        "name": "continuation",
+        "status": "PASS",
+        "evidence": {
+          "answerMatched": true,
+          "itemTypes": ["agentMessage", "userMessage"],
+          "emptyEnvironments": true,
+          "turnId": "01a0e774-3ce8-7b10-8466-a71677cbd734"
+        }
+      },
+      {
+        "name": "restart-effective-policy",
+        "status": "PASS",
+        "evidence": {
+          "disabledFeatureCount": 29,
+          "enabledMcpCount": 0,
+          "agentsEnabled": false
+        }
+      },
+      {
+        "name": "restart-continuation",
+        "status": "PASS",
+        "evidence": {
+          "answerMatched": true,
+          "itemTypes": ["agentMessage", "userMessage"],
+          "emptyEnvironments": true,
+          "turnId": "01a0e774-4a87-7ed2-97ec-9c5cba279079"
+        }
+      }
+    ],
+    "cleanup": [
+      {
+        "ownedProcessExited": true,
+        "code": 0,
+        "signal": null
+      },
+      {
+        "ownedProcessExited": true,
+        "code": 0,
+        "signal": null
+      },
+      {
+        "fixtureThreadArchived": true
+      },
+      {
+        "ownedProcessExited": true,
+        "code": 0,
+        "signal": null
+      },
+      {
+        "temporaryDirectoryRemoved": true
+      }
+    ],
+    "threadId": "01a0e772-7ddc-77a3-a6ad-3870989c8738"
+  },
+  "status": "PASS"
+}

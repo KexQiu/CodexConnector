@@ -76,7 +76,10 @@ describe('remote project creation through authenticated Feishu commands', () => 
           cards.push({ id, wire: JSON.parse(wire) });
           return id;
         },
-        update: async (id) => id,
+        update: async (id, wire) => {
+          cards.find((c) => c.id === id).wire = JSON.parse(wire);
+          return id;
+        },
       },
       config.projects,
     );
@@ -122,6 +125,33 @@ describe('remote project creation through authenticated Feishu commands', () => 
     });
   }
 
+  it('keeps project naming, validation feedback, and successful creation on one card', async () => {
+    await receive('/新建项目');
+    await flush();
+    const id = cards[0].id;
+    await receive('../invalid');
+    await flush();
+    expect(cards).toHaveLength(1);
+    expect(JSON.stringify(cards[0].wire)).toContain('项目名称需');
+    await receive('Card Flow');
+    await flush();
+    expect(cards).toHaveLength(1);
+    expect(cards[0].id).toBe(id);
+    expect(JSON.stringify(cards[0].wire)).toContain('项目已创建');
+    expect(JSON.stringify(cards[0].wire)).not.toContain('取消创建');
+    expect(rows()).toHaveLength(1);
+    expect(store.list()).toHaveLength(0);
+  });
+  it('cancels the active naming flow on its own card when a typed cancellation is received', async () => {
+    await receive('/新建项目');
+    await flush();
+    await receive('/取消创建');
+    await flush();
+    expect(cards).toHaveLength(1);
+    expect(JSON.stringify(cards[0].wire)).toContain('已退出本次项目创建');
+    expect(db.prepare('SELECT count(*) FROM remote_project_prompts').pluck().get()).toBe(0);
+    expect(rows()).toHaveLength(0);
+  });
   it('creates a Chinese-named empty directory, selects it, and routes the next message into it', async () => {
     await receive('/新建项目 旅行网站');
     expect(readdirSync(root)).toEqual(['旅行网站']);

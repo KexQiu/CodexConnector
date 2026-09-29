@@ -7,6 +7,8 @@ const rowSchema = z.object({
   outbox_id: z.string(),
   task_id: z.string().nullable(),
   panel_id: z.string().nullable().default(null),
+  view_id: z.string().nullable().default(null),
+  view_parent_id: z.string().nullable().default(null),
   card_version: z.number(),
   payload: z.string(),
   state: z.enum(['pending', 'claimed', 'sending', 'delivered', 'failed', 'unknown', 'superseded']),
@@ -61,18 +63,19 @@ export class OutboxStore {
         const candidate = this.db
           .prepare(
             `SELECT * FROM outbox AS candidate WHERE state = 'pending' AND next_retry_at <= ? AND (? IS NULL OR (owner_key = ? AND chat_id = ?)) AND NOT EXISTS
-        (SELECT 1 FROM outbox AS active WHERE (active.task_id = candidate.task_id OR active.panel_id = candidate.panel_id) AND active.state IN ('claimed','sending','unknown'))
+        (SELECT 1 FROM outbox AS active WHERE ((active.task_id = candidate.task_id OR active.panel_id = candidate.panel_id OR active.view_id = candidate.view_id) AND active.state IN ('claimed','sending','unknown')) OR (active.view_id = candidate.view_id AND active.card_version < candidate.card_version AND active.state='pending'))
         ORDER BY created_at, rowid LIMIT 1`,
           )
           .get(now, scope?.owner ?? null, scope?.owner ?? null, scope?.chat ?? null);
         if (!candidate) return null;
         const row = rowSchema.parse(candidate);
-        const messageId = row.panel_id
-          ? row.message_id
-          : this.db
-              .prepare('SELECT notification_message_id FROM tasks WHERE task_id = ?')
-              .pluck()
-              .get(row.task_id);
+        const messageId =
+          row.panel_id || row.view_id
+            ? row.message_id
+            : this.db
+                .prepare('SELECT notification_message_id FROM tasks WHERE task_id = ?')
+                .pluck()
+                .get(row.task_id);
         const token = randomUUID();
         this.db
           .prepare(
@@ -114,6 +117,15 @@ export class OutboxStore {
       )
       .run(row.panel_id, messageId);
   }
+  private completeView(row: OutboxClaim) {
+    if (!row.view_id) return;
+    this.db
+      .prepare(
+        `UPDATE feishu_actions SET expires_at=0 WHERE outbox_id IN
+      (SELECT outbox_id FROM outbox WHERE view_id=? AND card_version<?)`,
+      )
+      .run(row.view_id, row.card_version);
+  }
   markSending(token: string, now = Date.now()) {
     const changed = this.db
       .prepare(
@@ -145,6 +157,7 @@ export class OutboxStore {
           .prepare('UPDATE feishu_actions SET message_id = ? WHERE outbox_id = ?')
           .run(messageId, row.outbox_id);
         this.completePanel(row, messageId);
+        this.completeView(row);
       })
       .immediate();
   }
@@ -197,6 +210,7 @@ export class OutboxStore {
           .prepare('UPDATE feishu_actions SET message_id = ? WHERE outbox_id = ?')
           .run(messageId, id);
         this.completePanel(row, messageId);
+        this.completeView(row);
       })
       .immediate();
   }

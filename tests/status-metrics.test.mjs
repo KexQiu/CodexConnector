@@ -57,6 +57,7 @@ describe('session metadata and account quota projection (real SQLite, simulated 
     ownerId = ownerKey(owner);
     metrics = new StatusMetrics(store, ownerId);
     task = store.submit({
+      chatId: 'oc_chat',
       owner,
       requestKey: 'first',
       projectKey: 'p',
@@ -66,7 +67,7 @@ describe('session metadata and account quota projection (real SQLite, simulated 
     store.claim(task.task_id, 'epoch');
     store.bindThread(task.task_id, 'thread', dir, 'epoch');
     store.bindTurn(task.task_id, { id: 'turn', status: 'inProgress', items: [] });
-    store.setContext(ownerId, 'p', task.task_id);
+    store.setContext(ownerId, 'p', task.task_id, 'oc_chat');
   });
   afterEach(() => {
     if (db.open) db.close();
@@ -203,6 +204,7 @@ describe('session metadata and account quota projection (real SQLite, simulated 
   it('rejects late usage from an older turn after the next turn has reported usage', () => {
     store.applyTurn(task.task_id, { id: 'turn', status: 'completed', items: [] });
     const next = store.submit({
+      chatId: 'oc_chat',
       owner,
       requestKey: 'next',
       projectKey: 'p',

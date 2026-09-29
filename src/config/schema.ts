@@ -68,6 +68,7 @@ export const gatewayConfigSchema = z.strictObject({
       (value) => Boolean(value.credentialsFile) !== Boolean(value.credentialsSource),
       '必须指定文件凭据或桌面安全存储，不能同时指定',
     ),
+  projectless: z.strictObject({ enabled: z.boolean() }).optional(),
   maxConcurrentTasks: maxConcurrentTasksSchema,
   remoteProjectCreation: remoteProjectCreationSchema.optional(),
   hiddenProjectRoots: z.array(absolutePath).max(500).optional(),

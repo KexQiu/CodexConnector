@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { GatewayConfig } from '../config/schema.js';
 import { RpcRejectedError, RpcTransportError, type CodexRpcClient } from '../codex/rpc-client.js';
-import { executableProject } from '../projects/store.js';
+import { executionTarget } from '../conversations/execution.js';
+import type { StoredTask } from './types.js';
 import type { TaskStore } from './store.js';
 import { TaskError } from './types.js';
 
@@ -39,15 +40,19 @@ export class TaskControls {
       .run(id, taskId, this.owner, kind, task.turn_id, text, Date.now());
     this.store.refresh(taskId);
   }
-  recover() {
+  recover(projectless?: boolean) {
     this.store.db
       .prepare(
-        "UPDATE task_controls SET state='unknown',error_code='control_outcome_unknown' WHERE owner_key=? AND state='sending'",
+        "UPDATE task_controls SET state='unknown',error_code='control_outcome_unknown' WHERE owner_key=? AND state='sending' AND (? IS NULL OR task_id IN (SELECT task_id FROM tasks WHERE (project_key IS NULL)=?))",
       )
-      .run(this.owner);
+      .run(
+        this.owner,
+        projectless === undefined ? null : +projectless,
+        projectless === undefined ? null : +projectless,
+      );
   }
   async next(
-    rpc: CodexRpcClient,
+    connection: CodexRpcClient | ((task: StoredTask) => CodexRpcClient | undefined),
     config: GatewayConfig,
     wire: (
       id: string,
@@ -55,15 +60,24 @@ export class TaskControls {
       call: () => Promise<unknown>,
     ) => Promise<unknown>,
   ) {
-    if (!rpc.isReady) return false;
     const raw = this.store.db
       .prepare(
-        "SELECT * FROM task_controls WHERE owner_key=? AND state='queued' ORDER BY created_at,rowid LIMIT 1",
+        "SELECT * FROM task_controls WHERE owner_key=? AND state='queued' ORDER BY created_at,rowid",
       )
-      .get(this.owner);
+      .all(this.owner)
+      .find((value) => {
+        const candidate = rowSchema.parse(value);
+        const rpc =
+          typeof connection === 'function'
+            ? connection(this.store.get(candidate.task_id))
+            : connection;
+        return rpc?.isReady;
+      });
     if (!raw) return false;
     const row = rowSchema.parse(raw),
       task = this.store.get(row.task_id);
+    const rpc = typeof connection === 'function' ? connection(task) : connection;
+    if (!rpc?.isReady) return false;
     const finish = (state: string, error: string | null) =>
       this.store.db
         .transaction(() => {
@@ -79,7 +93,7 @@ export class TaskControls {
     }
     try {
       this.store.ownedThread(task.thread_id, this.owner);
-      if (row.kind === 'steer') executableProject(config.projects, task.project_key, task.cwd);
+      if (row.kind === 'steer') executionTarget(this.store, config, task);
     } catch {
       finish('rejected', 'project_not_writable');
       return true;

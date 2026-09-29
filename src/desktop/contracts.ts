@@ -14,6 +14,7 @@ const text = z.string().max(4096);
 export const desktopSettingsSchema = z.strictObject({
   codexBinary: text,
   feishu: z.strictObject({ appId: text, tenantKey: text, allowedOpenId: text, testChatId: text }),
+  projectless: z.strictObject({ enabled: z.boolean() }).optional(),
   maxConcurrentTasks: maxConcurrentTasksSchema,
   remoteProjectCreation: remoteProjectCreationSchema.default(defaultRemoteProjectCreation),
   hiddenProjectRoots: z.array(text).max(500).default([]),
@@ -31,6 +32,7 @@ export type DesktopStatus = {
   rpcReady: boolean;
   feishuConnected: boolean;
   pending: number;
+  projectless?: { enabled: boolean; ready: boolean; error: string | null };
   error: string | null;
   tasks: { status: string; count: number }[];
 };
@@ -80,6 +82,7 @@ export type DesktopApi = {
   saveDraft(settings: DesktopSettings, secret: string): Promise<DesktopSnapshot>;
   apply(settings: DesktopSettings, secret: string): Promise<DesktopSnapshot>;
   checkCodex(binary: string): Promise<CheckResult>;
+  checkProjectless(binary: string): Promise<CheckResult>;
   checkFeishu(settings: DesktopSettings, secret: string): Promise<CheckResult>;
   start(): Promise<DesktopStatus>;
   stop(): Promise<DesktopStatus>;
@@ -129,6 +132,7 @@ export const uiRequestSchema = z.discriminatedUnion('method', [
     secret: z.string().max(256),
   }),
   z.strictObject({ method: z.literal('checkCodex'), binary: text }),
+  z.strictObject({ method: z.literal('checkProjectless'), binary: text }),
   z.strictObject({
     method: z.literal('discoverProjects'),
     knownRoots: z.array(text).max(600),

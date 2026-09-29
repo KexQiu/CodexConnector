@@ -17,12 +17,12 @@ export function sessionSections(
   metrics: StatusMetrics,
   threadId: string | null,
   turnId: string | null,
-  projectKey: string,
-  cwd: string,
+  projectKey: string | null,
+  cwd: string | undefined,
   details = false,
 ): CardSection[] {
   const row = metrics.session(threadId);
-  const saved = threadId ? undefined : metrics.project(projectKey);
+  const saved = threadId || !projectKey ? undefined : metrics.project(projectKey);
   const defaults = saved?.cwd === cwd ? saved : undefined;
   const model = threadId ? row?.model : defaults?.model;
   const effort = threadId ? row?.reasoningEffort : defaults?.reasoningEffort;

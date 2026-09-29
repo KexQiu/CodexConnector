@@ -1,3 +1,6 @@
+import { randomUUID } from 'node:crypto';
+import { ConversationDirectories } from '../conversations/directories.js';
+import type { Conversation } from '../conversations/store.js';
 import { z } from 'zod';
 import type { GatewayConfig } from '../config/schema.js';
 import type { ProjectStore } from '../projects/store.js';
@@ -31,7 +34,8 @@ import {
   resultCard,
   sameConversation,
 } from './session-cards.js';
-import { DRAFT_TTL, queueNotice, topicTitle, type NoticeButton } from './conversation-ui.js';
+import { CardViews, type CardView, type Notice } from './card-views.js';
+import { DRAFT_TTL, noticeSchema, topicTitle, type NoticeButton } from './conversation-ui.js';
 
 const commandRow = z.object({
   command_id: z.string(),
@@ -39,12 +43,16 @@ const commandRow = z.object({
   payload: z.string(),
   attempts: z.number(),
   target_task_id: z.string().nullable(),
+  target_resolved: z.number(),
+  target_scope_kind: z.enum(['project', 'projectless']).nullable(),
+  target_conversation_id: z.string().nullable(),
   target_project_key: z.string().nullable(),
   created_at: z.number(),
 });
 export class FeishuCommands {
   readonly store: TaskStore;
   readonly panel: ContextPanel;
+  readonly views: CardViews;
   private readonly remoteProjects: RemoteProjects;
   constructor(
     private readonly inbox: FeishuInbox,
@@ -53,11 +61,14 @@ export class FeishuCommands {
     private readonly interactive?: {
       interactions: Interactions;
       controls: TaskControls;
-      refreshMetrics?: (taskId?: string, projectKey?: string) => Promise<void> | void;
+      refreshMetrics?: (taskId?: string, projectKey?: string | null) => Promise<void> | void;
+      projectlessAvailable?: () => boolean;
+      projectlessReason?: () => string;
       refreshQuota?: () => Promise<void> | void;
     },
   ) {
     this.store = inbox.store;
+    this.views = new CardViews(this.store, inbox.owner, inbox.credentials.testChatId);
     this.remoteProjects = new RemoteProjects(
       this.store.db,
       config,
@@ -74,9 +85,33 @@ export class FeishuCommands {
       .filter((task) => task.task_id.startsWith(short));
     if (tasks.length !== 1)
       throw new TaskError(tasks.length ? '任务短 ID 有冲突，请输入完整 ID' : '任务不存在或无权限');
-    return tasks[0]!;
+    const task = tasks[0]!;
+    this.store.conversations.owned(
+      task.conversation_id,
+      this.inbox.owner,
+      this.inbox.credentials.testChatId,
+    );
+    return task;
   }
-  private replyTask(message: string) {
+  private replyTask(message: string, snapshot?: string | null, pending = false) {
+    if (pending) throw new TaskError('收到回复时卡片更新结果尚未确认，请使用任务 ID 指定会话。');
+    const visible = snapshot ? this.views.get(snapshot) : this.views.visible(message);
+    if (visible) {
+      if (visible.message_id !== message) throw new TaskError('回复卡片关联不匹配');
+      if (!snapshot && !this.views.current(visible))
+        throw new TaskError('卡片更新结果尚未确认，请稍后再回复，或使用任务 ID。');
+      const tasks = [
+        ...new Set(
+          noticeSchema
+            .parse(JSON.parse(visible.payload))
+            .buttons.map((b) => b.taskId)
+            .filter((id): id is string => !!id),
+        ),
+      ];
+      if (tasks.length !== 1)
+        throw new TaskError('这张导航卡没有唯一会话，请先点击「接着聊」，再直接发送消息。');
+      return this.resolveTask(tasks[0]!);
+    }
     const ids = this.store.db
       .prepare(
         `SELECT t.task_id FROM tasks t JOIN task_destinations d USING(task_id)
@@ -91,17 +126,70 @@ export class FeishuCommands {
     const id = ids[0];
     if (typeof id !== 'string')
       throw new TaskError('回复的消息未关联当前用户的任务，请指定完整任务 ID');
-    return this.store.get(id);
+    return this.resolveTask(id);
   }
   private context() {
-    return z
-      .object({ project_key: z.string(), task_id: z.string().nullable() })
-      .nullish()
-      .parse(
-        this.store.db
-          .prepare('SELECT * FROM user_context WHERE owner_key = ?')
-          .get(this.inbox.owner),
+    return this.store.conversations.context(this.inbox.owner, this.inbox.credentials.testChatId);
+  }
+  private select(projectKey: string | null, taskId: string | null) {
+    this.store.setContext(this.inbox.owner, projectKey, taskId, this.inbox.credentials.testChatId);
+  }
+  private assertProjectless() {
+    if (this.config.projectless?.enabled === false)
+      throw new TaskError('本机已关闭无项目对话；历史仍可查看。');
+    if (!this.interactive?.projectlessAvailable?.())
+      throw new TaskError(
+        this.interactive?.projectlessReason?.() ??
+          '无项目普通聊天能力尚未通过本机检查。项目功能仍可使用。',
       );
+  }
+  private conversation(
+    projectKey: string | null,
+    parent: StoredTask | null,
+    selectedId?: string | null,
+  ) {
+    if (projectKey === null) this.assertProjectless();
+    const id = selectedId ?? parent?.conversation_id;
+    if (id) {
+      const conversation = this.store.conversations.owned(
+        id,
+        this.inbox.owner,
+        this.inbox.credentials.testChatId,
+      );
+      if (conversation.project_key !== projectKey) throw new TaskError('保存的会话范围不一致');
+      if (projectKey === null)
+        new ConversationDirectories(this.config.dataDir).assert(conversation);
+      else executableProject(this.config.projects, projectKey, conversation.cwd);
+      return conversation;
+    }
+    if (projectKey !== null) {
+      const project = executableProject(this.config.projects, projectKey);
+      return this.store.conversations.create({
+        owner: this.inbox.owner,
+        chat: this.inbox.credentials.testChatId,
+        scope: { kind: 'project', projectKey },
+        cwd: project.cwd,
+      });
+    }
+    const conversationId = randomUUID();
+    const directory = new ConversationDirectories(this.config.dataDir).create(conversationId);
+    return this.store.conversations.create({
+      id: conversationId,
+      owner: this.inbox.owner,
+      chat: this.inbox.credentials.testChatId,
+      scope: { kind: 'projectless' },
+      ...directory,
+    });
+  }
+  private source(key: string): CardView | null {
+    const raw = this.store.db
+      .prepare(
+        'SELECT payload FROM feishu_commands WHERE command_id=? AND owner_key=? AND chat_id=?',
+      )
+      .pluck()
+      .get(key, this.inbox.owner, this.inbox.credentials.testChatId);
+    if (typeof raw !== 'string') return null;
+    return this.views.get(inboundPayload.parse(JSON.parse(raw)).sourceOutboxId);
   }
   private notice(
     key: string,
@@ -109,20 +197,81 @@ export class FeishuCommands {
     text: string,
     buttons: NoticeButton[] = [],
     layout?: CardLayout,
+    mode: 'navigate' | 'replace' | 'back' = 'navigate',
   ) {
-    queueNotice(
-      this.store,
-      this.inbox.owner,
-      this.inbox.credentials.testChatId,
+    this.views.queue(
       key,
-      title,
-      text,
-      buttons,
-      layout,
+      noticeSchema.parse({ title, text: text.slice(0, 5000), buttons, layout }),
+      this.source(key),
+      mode,
     );
   }
-  private projectName(key: string) {
-    return this.config.projects.find((p) => p.key === key)?.name ?? key;
+  private selectionFeedback(key: string, feedback: string) {
+    const source = this.source(key);
+    if (!this.views.reusable(source)) return false;
+    const card = noticeSchema.parse(JSON.parse(source.payload));
+    this.decorateSelection(card, feedback);
+    this.views.queue(key, card, source, 'replace');
+    return true;
+  }
+  private decorateSelection(card: Notice, feedback?: string) {
+    if (['当前会话快照', '当前会话已变化', '已切换话题', '新话题已准备好'].includes(card.title)) {
+      const snapshot = this.panel.snapshot();
+      Object.assign(
+        card,
+        noticeSchema.parse({
+          title: '当前会话快照',
+          text: snapshot.text,
+          buttons: snapshot.buttons,
+          layout: snapshot.layout,
+        }),
+      );
+    }
+    if (card.feedbackError && card.layout)
+      card.layout.alerts = card.layout.alerts.filter((a) => a !== card.feedbackError);
+    delete card.feedbackError;
+    if (card.layout) card.layout.notes = card.layout.notes.filter((n) => !n.startsWith('已选择：'));
+    const context = this.context();
+    const selected = context?.task_id ? this.store.get(context.task_id) : null;
+    if (card.title === '选择会话') {
+      for (const button of card.buttons) {
+        if (!button.taskId || !['select', 'details'].includes(button.action)) continue;
+        const current = sameConversation(this.store.get(button.taskId), selected);
+        button.action = current ? 'details' : 'select';
+        button.label = current ? '查看详情' : '接着聊';
+      }
+    }
+    if (card.layout) {
+      if (feedback)
+        card.layout.notes = [
+          feedback,
+          ...card.layout.notes.filter((n) => !n.startsWith('已选择：')).slice(0, 7),
+        ];
+      for (const section of card.layout.sections) {
+        const targets = (section.actions ?? []).map((i) => card.buttons[i]);
+        const selectable = targets.some(
+          (b) => b && ['project', 'select', 'details', 'projectless_sessions'].includes(b.action),
+        );
+        if (!selectable) continue;
+        const current = targets.some(
+          (b) =>
+            b &&
+            (b.action === 'project'
+              ? b.projectKey === context?.project_key
+              : b.action === 'projectless_sessions'
+                ? context?.scope_kind === 'projectless'
+                : b.taskId &&
+                  (card.title === '任务列表'
+                    ? b.taskId === selected?.task_id
+                    : sameConversation(this.store.get(b.taskId), selected))),
+        );
+        section.title = section.title.replace(/^当前 · /, '');
+        if (current) section.title = '当前 · ' + section.title;
+      }
+    }
+  }
+  private projectName(key: string | null) {
+    return this.config.projects.find((p) => p.key === key)?.name ?? key ?? '无项目';
   }
   private taskList(page: number) {
     return taskListCard(
@@ -131,6 +280,7 @@ export class FeishuCommands {
       this.config.projects,
       this.context()?.task_id,
       page,
+      this.inbox.credentials.testChatId,
     );
   }
   private detailButtons(task: StoredTask): NoticeButton[] {
@@ -156,11 +306,12 @@ export class FeishuCommands {
       },
     ];
   }
-  private async sessionCard(projectKey: string, page: number, desktop = false) {
-    if (!projectKey) throw new TaskError('请先选择项目，或发送 /会话 项目key。');
-    if (desktop)
+  private async sessionCard(projectKey: string | null, page: number, desktop = false) {
+    if (projectKey === '') throw new TaskError('请先选择项目，或发送 /会话 无项目。');
+    if (projectKey === null && desktop) throw new TaskError('暂不接管桌面端无项目会话');
+    if (desktop && projectKey !== null)
       return desktopSessionCard(this.projects, projectKey, this.projectName(projectKey), page);
-    if (!this.config.projects.some((p) => p.key === projectKey))
+    if (projectKey !== null && !this.config.projects.some((p) => p.key === projectKey))
       throw new TaskError('项目不存在，请先发送 /项目。');
     const context = this.context();
     const selected = context?.task_id ? this.store.get(context.task_id) : null;
@@ -171,9 +322,24 @@ export class FeishuCommands {
       this.projectName(projectKey),
       selected,
       page,
+      this.inbox.credentials.testChatId,
     );
   }
-  private contextNotice(key: string, projectKey: string, task: StoredTask | null) {
+  private contextNotice(key: string, projectKey: string | null, task: StoredTask | null) {
+    this.panel.request();
+    if (
+      this.selectionFeedback(
+        key,
+        `已选择：${this.projectName(projectKey)} · ${task ? topicTitle(this.store, task) : '新会话'}。直接发送消息即可开始。`,
+      )
+    )
+      return;
+    const source = this.source(key);
+    if (source?.panel_id) return;
+    if (source?.task_id) {
+      this.store.refresh(source.task_id);
+      return;
+    }
     this.notice(
       key,
       task ? '已切换话题' : '新话题已准备好',
@@ -189,8 +355,9 @@ export class FeishuCommands {
         (task
           ? '直接发送消息即可继续；正在执行时，新消息将排到下一轮。'
           : '直接发送需求即可开始。') +
-        `\n权限：${projectPermissionLabel(this.config.projects.find((p) => p.key === projectKey))}\n回复其他任务卡片时，以被回复的话题为准。` +
-        (canExecuteProject(this.config.projects.find((p) => p.key === projectKey))
+        `\n权限：${projectKey === null ? '普通聊天，仅允许内置时钟' : projectPermissionLabel(this.config.projects.find((p) => p.key === projectKey))}\n回复其他任务卡片时，以被回复的话题为准。` +
+        (projectKey === null ||
+        canExecuteProject(this.config.projects.find((p) => p.key === projectKey))
           ? ''
           : '\n该项目目前只读，尚不能执行任务。'),
       [
@@ -267,12 +434,13 @@ export class FeishuCommands {
   }
   private submit(
     key: string,
-    projectKey: string,
+    projectKey: string | null,
     prompt: string,
     parent: StoredTask | null,
     updateContext = true,
+    resolved?: Conversation,
   ) {
-    const project = executableProject(this.config.projects, projectKey, parent?.cwd);
+    const conversation = resolved ?? this.conversation(projectKey, parent);
     if (
       this.store
         .list(this.inbox.owner)
@@ -284,12 +452,14 @@ export class FeishuCommands {
       owner: configuredOwner(this.config),
       requestKey: `feishu:${key}`,
       projectKey,
-      cwd: project.cwd,
+      cwd: conversation.cwd,
+      conversationId: conversation.conversation_id,
+      chatId: this.inbox.credentials.testChatId,
       prompt,
-      ...(parent?.thread_id ? { threadId: parent.thread_id } : {}),
+      ...(conversation.thread_id ? { threadId: conversation.thread_id } : {}),
     });
     this.attach(task);
-    if (updateContext) this.store.setContext(this.inbox.owner, projectKey, task.task_id);
+    if (updateContext) this.select(projectKey, task.task_id);
     return task;
   }
   private attach(task: StoredTask) {
@@ -346,6 +516,60 @@ export class FeishuCommands {
         db
           .prepare('UPDATE feishu_commands SET task_id=? WHERE command_id=?')
           .run(taskId, command.command_id);
+      const source = this.source(command.command_id);
+      if (source && !this.views.current(source)) {
+        finish(() => {});
+        return true;
+      }
+      if (payload.kind === 'action' && payload.action === 'back') {
+        const parent = this.views.get(source?.view_parent_id);
+        if (!parent || parent.view_id !== source?.view_id)
+          throw new TaskError('没有可返回的页面，请重新打开列表。');
+        const card = noticeSchema.parse(JSON.parse(parent.payload));
+        // Draft deadlines stay fixed. Browsing a historical page gets fresh navigation buttons.
+        for (const button of card.buttons)
+          if (!button.draftId) button.expiresAt = Date.now() + DRAFT_TTL;
+        this.decorateSelection(card);
+        finish(() => {
+          db.prepare('DELETE FROM remote_project_prompts WHERE owner_key=? AND chat_id=?').run(
+            this.inbox.owner,
+            this.inbox.credentials.testChatId,
+          );
+          this.views.queue(command.command_id, card, source, 'back');
+        });
+        return true;
+      }
+      const bindProjectPrompt = () => {
+        const target = db
+          .prepare(
+            `SELECT o.outbox_id FROM remote_project_prompts p JOIN outbox o
+          ON o.logical_key='feishu:reply:' || p.token
+          WHERE p.owner_key=? AND p.chat_id=? AND o.state='delivered'`,
+          )
+          .pluck()
+          .get(this.inbox.owner, this.inbox.credentials.testChatId);
+        if (typeof target === 'string') {
+          const first = this.views.get(target);
+          const latest = db
+            .prepare(
+              `SELECT outbox_id FROM outbox WHERE view_id=? AND state='delivered' ORDER BY card_version DESC LIMIT 1`,
+            )
+            .pluck()
+            .get(first?.view_id ?? target);
+          const prompt = this.views.get(typeof latest === 'string' ? latest : target);
+          if (
+            prompt &&
+            this.views.current(prompt) &&
+            noticeSchema.parse(JSON.parse(prompt.payload)).title === '新项目叫什么？'
+          ) {
+            payload.sourceOutboxId = prompt.outbox_id;
+            db.prepare('UPDATE feishu_commands SET payload=? WHERE command_id=?').run(
+              JSON.stringify(payload),
+              command.command_id,
+            );
+          }
+        }
+      };
       const clearProjectPrompt = () =>
         db
           .prepare('DELETE FROM remote_project_prompts WHERE owner_key=? AND chat_id=?')
@@ -354,6 +578,7 @@ export class FeishuCommands {
         (payload.kind === 'action' && payload.action === 'cancel_project') ||
         name === '/取消创建'
       ) {
+        if (payload.kind !== 'action') bindProjectPrompt();
         finish(() => {
           if (payload.kind === 'action')
             db.prepare(
@@ -434,6 +659,7 @@ export class FeishuCommands {
           throw new TaskError('项目名称输入已过期，这条消息没有执行；请重新发送 /新建项目 名称');
         }
         // Persist the chosen meaning before filesystem work; retries must never become model tasks.
+        if (nameReply) bindProjectPrompt();
         if (nameReply)
           db.prepare('UPDATE feishu_commands SET payload=? WHERE command_id=?').run(
             JSON.stringify({ ...payload, text: `/新建项目 ${payload.text}` }),
@@ -445,7 +671,7 @@ export class FeishuCommands {
         );
         finish(() => {
           clearProjectPrompt();
-          this.store.setContext(this.inbox.owner, project.key, null);
+          this.select(project.key, null);
           this.panel.request();
           const next = canExecuteProject(project)
             ? '已切换到新项目，直接发送需求即可开始。'
@@ -465,7 +691,31 @@ export class FeishuCommands {
         });
         return true;
       }
+      if (payload.kind === 'action' && payload.action === 'quota') {
+        await this.interactive?.refreshQuota?.();
+        notice(
+          '账号剩余额度',
+          new StatusMetrics(this.store, this.inbox.owner).accountText(null, true),
+          quotaLayout(new StatusMetrics(this.store, this.inbox.owner)),
+          [{ label: '刷新额度', action: 'quota', expiresAt: Date.now() + DRAFT_TTL }],
+        );
+        return true;
+      }
       if (payload.kind === 'action') {
+        if (payload.action === 'projectless_sessions') {
+          const card = await this.sessionCard(null, payload.page ?? 0);
+          notice(card.layout.heading, '无项目会话', card.layout, card.buttons);
+          return true;
+        }
+        if (payload.action === 'projectless_new') {
+          finish(() => {
+            clearProjectPrompt();
+            this.select(null, null);
+            this.contextNotice(command.command_id, null, null);
+          });
+          return true;
+        }
+
         if (payload.action === 'tasks') {
           const card = this.taskList(payload.page ?? 0);
           notice(card.layout.heading, '任务列表', card.layout, card.buttons);
@@ -490,6 +740,7 @@ export class FeishuCommands {
             const context = this.context();
             this.panel.request();
             if (payload.choice === 'refresh') {
+              if (source?.panel_id) return;
               const snapshot = this.panel.snapshot();
               this.notice(
                 command.command_id,
@@ -503,6 +754,7 @@ export class FeishuCommands {
               context.project_key !== payload.projectKey ||
               context.task_id !== payload.taskId
             ) {
+              if (source?.panel_id) return;
               const snapshot = this.panel.snapshot();
               this.notice(
                 command.command_id,
@@ -515,7 +767,7 @@ export class FeishuCommands {
                 },
               );
             } else if (payload.choice === 'new_topic') {
-              this.store.setContext(this.inbox.owner, context.project_key, null);
+              this.select(context.project_key, null);
               this.contextNotice(command.command_id, context.project_key, null);
             } else if (payload.choice === 'details' && context.task_id) {
               const task = this.resolveTask(context.task_id);
@@ -570,8 +822,20 @@ export class FeishuCommands {
                 payload.draftId,
               );
               associate(task.task_id);
+              this.notice(
+                command.command_id,
+                '需求已提交',
+                '已生成独立任务卡，请在任务卡查看进度。',
+                [],
+                operationCard(
+                  '需求已提交',
+                  '已生成独立任务卡，请在任务卡查看进度。',
+                  'green',
+                  '这条需求只执行一次。',
+                ),
+              );
             } else {
-              this.store.setContext(this.inbox.owner, projectKey, null);
+              this.select(projectKey, null);
               this.contextNotice(command.command_id, projectKey, null);
             }
           });
@@ -613,10 +877,10 @@ export class FeishuCommands {
               card.layout,
             );
           } else if (payload.action === 'select') {
-            this.store.setContext(this.inbox.owner, task.project_key, task.task_id);
+            this.select(task.project_key, task.task_id);
             this.contextNotice(command.command_id, task.project_key, task);
           } else if (payload.action === 'new_topic') {
-            this.store.setContext(this.inbox.owner, task.project_key, null);
+            this.select(task.project_key, null);
             this.contextNotice(command.command_id, task.project_key, null);
           } else if (payload.action === 'details') {
             this.notice(
@@ -658,6 +922,7 @@ export class FeishuCommands {
           '账号剩余额度',
           new StatusMetrics(this.store, this.inbox.owner).accountText(null, true),
           quotaLayout(new StatusMetrics(this.store, this.inbox.owner)),
+          [{ label: '刷新额度', action: 'quota', expiresAt: Date.now() + DRAFT_TTL }],
         );
         return true;
       }
@@ -668,13 +933,13 @@ export class FeishuCommands {
         return true;
       }
       if (name === '/选择') {
-        if (!this.config.projects.some((p) => p.key === rest))
+        if (rest !== '无项目' && !this.config.projects.some((p) => p.key === rest))
           throw new TaskError('项目不存在，请先发送 /项目');
         await this.interactive?.refreshMetrics?.(undefined, rest);
         finish(() => {
           clearProjectPrompt();
-          this.store.setContext(this.inbox.owner, rest, null);
-          this.contextNotice(command.command_id, rest, null);
+          this.select(rest === '无项目' ? null : rest, null);
+          this.contextNotice(command.command_id, rest === '无项目' ? null : rest, null);
         });
         return true;
       }
@@ -684,7 +949,7 @@ export class FeishuCommands {
         if (!Number.isSafeInteger(page) || page < 1 || page > 500)
           throw new TaskError('页码应为 1–500 的整数');
         const card = await this.sessionCard(
-          key || this.context()?.project_key || '',
+          key === '无项目' ? null : key || (this.context() ? this.context()!.project_key : null),
           page - 1,
           mode === '桌面',
         );
@@ -700,17 +965,16 @@ export class FeishuCommands {
         return true;
       }
       // A reply is authoritative. Never fall through to a newer implicit selection.
-      const replied = payload.replyTo ? this.replyTask(payload.replyTo) : null;
+      const replied =
+        !command.target_resolved && payload.replyTo
+          ? this.replyTask(payload.replyTo, payload.replyOutboxId, payload.replyCardPending)
+          : null;
       if (name === '/新话题') {
-        const projectKey = replied?.project_key ?? this.context()?.project_key;
+        const projectKey = replied ? replied.project_key : (this.context()?.project_key ?? null);
         if (rest) throw new TaskError('直接发送 /新话题 即可；切换项目请使用 /项目。');
-        if (!projectKey) await this.projectPicker(command.command_id, null);
-        else await this.interactive?.refreshMetrics?.(undefined, projectKey);
         finish(() => {
-          if (projectKey) {
-            this.store.setContext(this.inbox.owner, projectKey, null);
-            this.contextNotice(command.command_id, projectKey, null);
-          }
+          this.select(projectKey, null);
+          this.contextNotice(command.command_id, projectKey, null);
         });
         return true;
       }
@@ -776,16 +1040,18 @@ export class FeishuCommands {
         }
         return true;
       }
-      let projectKey: string,
+      let projectKey: string | null,
         prompt: string,
         parent: StoredTask | null = null;
+      const context = this.context();
+      let selectedId: string | null = null;
       if (name === '/新建') {
         const match = rest.match(/^(\S+)\s+([\s\S]+)$/);
         if (!match) throw new TaskError('格式：/新建 项目key 任务内容');
-        projectKey = match[1]!;
+        projectKey = match[1] === '无项目' ? null : match[1]!;
         prompt = match[2]!;
         if (replied && replied.project_key !== projectKey)
-          throw new TaskError('新建项目与被回复任务不一致');
+          throw new TaskError('新建范围与被回复任务不一致');
       } else if (name === '/继续') {
         const match = rest.match(/^(\S+)\s+([\s\S]+)$/);
         if (!match) throw new TaskError('格式：/继续 任务ID 任务内容');
@@ -796,7 +1062,6 @@ export class FeishuCommands {
           throw new TaskError('指定任务与被回复卡片不一致');
       } else {
         if (name.startsWith('/')) throw new TaskError('暂不支持该命令。发送 /帮助 查看用法');
-        // A crash after saving a draft must not turn it into implicit work after a later switch.
         const existingDraft = z
           .object({ state: z.string(), task_id: z.string().nullable() })
           .optional()
@@ -815,113 +1080,107 @@ export class FeishuCommands {
           });
           return true;
         }
-        const context = this.context();
-        parent =
-          command.target_project_key !== null
-            ? command.target_task_id
-              ? this.resolveTask(command.target_task_id)
-              : null
-            : (replied ?? (context?.task_id ? this.resolveTask(context.task_id) : null));
-        projectKey =
-          command.target_project_key ?? parent?.project_key ?? context?.project_key ?? '';
+        parent = command.target_resolved
+          ? null
+          : (replied ?? (context?.task_id ? this.resolveTask(context.task_id) : null));
+        projectKey = parent ? parent.project_key : (context?.project_key ?? null);
+        selectedId = replied ? replied.conversation_id : (context?.conversation_id ?? null);
         prompt = payload.text;
-        if (!projectKey) {
-          if (!prompt.trim()) throw new TaskError('请输入任务内容。');
-          const draftCount = db
-            .prepare(
-              "SELECT count(*) FROM feishu_drafts WHERE owner_key=? AND chat_id=? AND state='pending' AND expires_at>?",
-            )
-            .pluck()
-            .get(this.inbox.owner, this.inbox.credentials.testChatId, now);
-          if (typeof draftCount === 'number' && draftCount >= 100)
-            throw new TaskError('已有 100 条需求等待选择项目，请先选择项目或取消旧需求。');
-          db.prepare(
-            `INSERT OR IGNORE INTO feishu_drafts (draft_id,owner_key,chat_id,prompt,state,created_at,expires_at)
-            VALUES (?,?,?,?,'pending',?,?)`,
-          ).run(
-            command.command_id,
-            this.inbox.owner,
-            this.inbox.credentials.testChatId,
-            prompt,
-            now,
-            now + DRAFT_TTL,
-          );
-          await this.projectPicker(command.command_id, command.command_id);
-          finish(() => {});
-          return true;
-        }
-        db.prepare(
-          'UPDATE feishu_commands SET target_task_id=?,target_project_key=? WHERE command_id=?',
-        ).run(parent?.task_id ?? null, projectKey, command.command_id);
-      }
-      executableProject(this.config.projects, projectKey, parent?.cwd);
-      if (parent && !parent.thread_id) {
         if (
-          !['queued', 'starting', 'unknown'].includes(parent.status) ||
-          now - command.created_at >= DRAFT_TTL
+          !command.target_resolved &&
+          !replied &&
+          !context &&
+          this.store.conversations.context(this.inbox.owner, '')
         )
-          throw new TaskError('上一个话题未能建立会话，本条消息尚未执行。请开启新话题后重新发送。');
-        db.transaction(() => {
-          db.prepare(
-            'UPDATE feishu_commands SET target_task_id=?,next_retry_at=? WHERE command_id=?',
-          ).run(parent.task_id, now + 1000, command.command_id);
-          this.notice(
-            `${command.command_id}:waiting`,
-            '后续消息已保存',
-            `项目：${this.projectName(projectKey)}\n话题：${topicTitle(this.store, parent)}\n等待该话题建立会话后排队处理，无需重发；这不会中断当前任务。`,
-            [
-              {
-                label: '查看前一任务',
-                action: 'details',
-                taskId: parent.task_id,
-                expiresAt: now + DRAFT_TTL,
-              },
-            ],
-            operationCard(
-              '后续消息已保存',
-              '等待前一任务建立会话，再排队处理本条消息。',
-              'blue',
-              '无需重发；这不会中断当前任务。',
-              [
-                { label: '项目', value: this.projectName(projectKey) },
-                { label: '话题', value: topicTitle(this.store, parent) },
-              ],
-            ),
-          );
-        }).immediate();
-        return true;
+          throw new TaskError('旧选中态缺少可靠的单聊归属，请先发送 /选择 无项目 或重新选择项目。');
       }
+      // Saved routing wins over a later selection, including explicit commands on retry.
+      if (command.target_resolved) {
+        if (!command.target_scope_kind)
+          throw new TaskError('原消息缺少可靠的目标范围，请在本机核对');
+        projectKey =
+          command.target_scope_kind === 'projectless' ? null : command.target_project_key;
+        if (command.target_scope_kind === 'project' && !projectKey)
+          throw new TaskError('原消息的项目已失效');
+        parent = command.target_task_id ? this.resolveTask(command.target_task_id) : null;
+        selectedId = command.target_conversation_id;
+      }
+      const previousTask = this.store.request(this.inbox.owner, `feishu:${command.command_id}`);
+      if (previousTask) {
+        if (previousTask.project_key !== projectKey || previousTask.prompt !== prompt)
+          throw new TaskError('历史消息与保存的执行目标不一致');
+        selectedId = previousTask.conversation_id;
+      }
+      const resolved = db
+        .transaction(() => {
+          const conversation = this.conversation(projectKey, parent, selectedId);
+          db.prepare(
+            'UPDATE feishu_commands SET target_resolved=1,target_scope_kind=?,target_project_key=?,target_conversation_id=?,target_task_id=? WHERE command_id=?',
+          ).run(
+            conversation.scope_kind,
+            projectKey,
+            conversation.conversation_id,
+            parent?.task_id ?? null,
+            command.command_id,
+          );
+          if (!command.target_resolved) {
+            this.store.conversations.select(
+              this.inbox.owner,
+              this.inbox.credentials.testChatId,
+              projectKey === null ? { kind: 'projectless' } : { kind: 'project', projectKey },
+              conversation.conversation_id,
+              parent?.task_id ?? null,
+            );
+          }
+          return conversation;
+        })
+        .immediate();
       finish(() => {
+        const current = this.context();
+        const updateContext =
+          !command.target_resolved ||
+          current?.conversation_id === resolved.conversation_id ||
+          (!!current && current.project_key === projectKey && !current.conversation_id && !parent);
         const task = this.submit(
           command.command_id,
           projectKey,
           prompt,
           parent,
-          command.target_project_key === null ||
-            (this.context()?.project_key === projectKey &&
-              (this.context()?.task_id ?? null) === (parent?.task_id ?? null)),
+          updateContext,
+          resolved,
         );
-        db.prepare('UPDATE feishu_commands SET task_id = ? WHERE command_id = ?').run(
-          task.task_id,
-          command.command_id,
-        );
+        associate(task.task_id);
       });
       return true;
     } catch (error) {
       if (error instanceof TaskError) {
         db.transaction(() => {
-          this.notice(
-            command.command_id,
-            '命令未执行',
-            error.message,
-            navigationButtons(),
-            operationCard(
+          const source = this.source(command.command_id);
+          if (this.views.reusable(source)) {
+            if (this.views.current(source)) {
+              const card = noticeSchema.parse(JSON.parse(source.payload));
+              card.feedbackError = error.message;
+              if (card.layout)
+                card.layout.alerts = [
+                  error.message,
+                  ...card.layout.alerts.filter((a) => a !== error.message).slice(0, 7),
+                ];
+              else card.text = error.message + '\n' + card.text;
+              this.views.queue(command.command_id, card, source, 'replace');
+            }
+          } else
+            this.notice(
+              command.command_id,
               '命令未执行',
               error.message,
-              'orange',
-              '先核对当前会话与任务状态，再根据原因调整操作。',
-            ),
-          );
+              navigationButtons(),
+              operationCard(
+                '命令未执行',
+                error.message,
+                'orange',
+                '先核对当前会话与任务状态，再根据原因调整操作。',
+              ),
+            );
           db.prepare(
             "UPDATE feishu_commands SET state = 'processed', error_code = 'command_rejected' WHERE command_id = ?",
           ).run(command.command_id);
@@ -969,6 +1228,6 @@ export class FeishuCommands {
         : notification === 'unknown'
           ? '通知结果待核对，不会盲目重发。'
           : '';
-    return `话题：${topicTitle(this.store, task)}\n任务：${task.task_id}\n项目：${this.projectName(task.project_key)}（${task.project_key}）\n目录：${task.cwd}\n状态：${task.status}\n等待审批：${!!task.waiting_approval}\n等待输入：${!!task.waiting_input}\nthread：${task.thread_id ?? '待绑定'}\nturn：${task.turn_id ?? '待绑定'}\n${metrics.sessionText(task.thread_id, task.turn_id, true, task.project_key, task.cwd)}\n${taskFailureDescription(task)}\n${delivery}\n${this.store.result(task.task_id).slice(0, 1800)}`;
+    return `话题：${topicTitle(this.store, task)}\n任务：${task.task_id}\n项目：${this.projectName(task.project_key)}${task.project_key ? `（${task.project_key}）` : ''}\n目录：${task.cwd}\n状态：${task.status}\n等待审批：${!!task.waiting_approval}\n等待输入：${!!task.waiting_input}\nthread：${task.thread_id ?? '待绑定'}\nturn：${task.turn_id ?? '待绑定'}\n${metrics.sessionText(task.thread_id, task.turn_id, true, task.project_key, task.cwd)}\n${taskFailureDescription(task)}\n${delivery}\n${this.store.result(task.task_id).slice(0, 1800)}`;
   }
 }

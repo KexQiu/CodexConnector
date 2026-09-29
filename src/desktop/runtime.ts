@@ -69,6 +69,7 @@ export function validateSettings(
       credentialsSource: 'desktop',
     },
     projects: settings.projects,
+    projectless: settings.projectless ?? { enabled: true },
     maxConcurrentTasks: settings.maxConcurrentTasks,
     remoteProjectCreation: settings.remoteProjectCreation,
     hiddenProjectRoots: settings.hiddenProjectRoots,
@@ -106,6 +107,9 @@ export class DesktopRuntime {
           : this.phase === 'starting'
             ? 'starting'
             : 'degraded',
+      ...('projectless' in gateway && gateway.projectless
+        ? { projectless: gateway.projectless }
+        : {}),
       rpcReady: app.ready && gateway.rpcReady,
       feishuConnected: gateway.feishuConnected,
       tasks,

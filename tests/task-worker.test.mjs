@@ -211,7 +211,7 @@ describe('M2 worker through real local WebSocket (not a live model)', () => {
     await worker.start();
     expect((await worker.dispatchNext()).status).toBe('unknown');
     expect(f.store.get(task.task_id).turn_id).toBeNull();
-    expect(f.db.prepare('SELECT count(*) FROM execution_locks').pluck().get()).toBe(2);
+    expect(f.db.prepare('SELECT count(*) FROM execution_locks').pluck().get()).toBe(3);
     worker.close();
     const restarted = f.worker();
     await restarted.start();

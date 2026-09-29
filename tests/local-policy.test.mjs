@@ -99,11 +99,13 @@ describe('local project permissions', () => {
     expect(() => writableProject([project()], 'p')).toThrow('文件修改');
     expect(() => executableProject([project('disabled')], 'p')).toThrow('未开放');
     const card = projectPickerCard([{ ...project(), available: true }], 0);
-    expect(card.buttons).toHaveLength(1);
+    expect(card.buttons.filter((button) => button.action === 'project')).toHaveLength(1);
     expect(JSON.stringify(card.layout)).toContain('只读分析');
-    expect(card.buttons[0].action).toBe('project');
+    expect(card.buttons[0].action).toBe('projectless_sessions');
     expect(
-      projectPickerCard([{ ...project('disabled'), available: true }], 0).buttons,
+      projectPickerCard([{ ...project('disabled'), available: true }], 0).buttons.filter(
+        (button) => button.action === 'project',
+      ),
     ).toHaveLength(0);
   });
   it.each(['read-only', 'workspace-write'])(
@@ -202,7 +204,7 @@ describe('durable concurrency slots and checkout isolation', () => {
     expect(claim(c, 2)).toBeNull();
     expect(claim(c, 1)).toBeNull();
     expect(claim(c, 3)).toBeTypeOf('string');
-    expect(db.prepare('SELECT count(*) FROM execution_locks').pluck().get()).toBe(5);
+    expect(db.prepare('SELECT count(*) FROM execution_locks').pluck().get()).toBe(8);
   });
   it('serializes the same thread and overlapping checkouts without a constraint exception', () => {
     const a = submit('first');

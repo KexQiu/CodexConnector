@@ -1,3 +1,4 @@
+import { inspectProjectless } from '../conversations/capability.js';
 import { existsSync, readdirSync } from 'node:fs';
 import { join, isAbsolute } from 'node:path';
 import { z } from 'zod';
@@ -56,6 +57,13 @@ async function dispatch(method: string, args: unknown): Promise<unknown> {
       validateCreationRoot(config, [applicationRoot, ...(input.dataDir ? [input.dataDir] : [])]);
       if (input.dataDir) assertQuietDatabase({ ...config, dataDir: input.dataDir });
       return { ok: true };
+    }
+    case 'projectlessCheck': {
+      const result = await inspectProjectless(z.string().refine(isAbsolute).parse(args));
+      return {
+        ok: result.ok,
+        message: `${result.message} · 当前 ${result.actual ?? '未知'}；支持 ${result.expected}`,
+      };
     }
     case 'doctor': {
       const binary = z.string().refine(isAbsolute).parse(args);

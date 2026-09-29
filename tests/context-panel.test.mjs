@@ -101,12 +101,13 @@ describe('durable context panel and bot menu (real SQLite, simulated Feishu)', (
       .prepare('SELECT * FROM feishu_actions WHERE choice=? ORDER BY rowid DESC LIMIT 1')
       .get(choice);
   async function initial() {
-    store.setContext(inbox.owner, 'p', null);
+    store.setContext(inbox.owner, 'p', null, credentials.testChatId);
     panel.sync();
     await sender.flushOne();
   }
   const task = () =>
     store.submit({
+      chatId: credentials.testChatId,
       owner,
       requestKey: randomUUID(),
       projectKey: 'p',
@@ -121,7 +122,7 @@ describe('durable context panel and bot menu (real SQLite, simulated Feishu)', (
     expect(messages[0].body.content).toContain('测试项目');
     expect(JSON.parse(messages[0].body.content).config.update_multi).toBe(true);
     expect(panel.sync()).toBe(false);
-    store.setContext(inbox.owner, 'readonly', null);
+    store.setContext(inbox.owner, 'readonly', null, credentials.testChatId);
     expect(panel.sync()).toBe(true);
     await sender.flushOne();
     expect(panelRow().message_id).toBe(id);
@@ -140,6 +141,7 @@ describe('durable context panel and bot menu (real SQLite, simulated Feishu)', (
     store.bindThread(first.task_id, 'thread', dir, 'e');
     store.bindTurn(first.task_id, { id: 'turn', status: 'inProgress', items: [] });
     const next = store.submit({
+      chatId: credentials.testChatId,
       owner,
       requestKey: 'next',
       projectKey: 'p',
@@ -147,7 +149,7 @@ describe('durable context panel and bot menu (real SQLite, simulated Feishu)', (
       prompt: '后续',
       threadId: 'thread',
     }).task;
-    store.setContext(inbox.owner, 'p', next.task_id);
+    store.setContext(inbox.owner, 'p', next.task_id, credentials.testChatId);
     db.prepare('UPDATE tasks SET waiting_input=1 WHERE task_id=?').run(first.task_id);
     const view = panel.snapshot();
     expect(view.text).toContain('执行中');
@@ -156,9 +158,9 @@ describe('durable context panel and bot menu (real SQLite, simulated Feishu)', (
     expect(view.text).toContain('检查登录页面');
   });
   it('coalesces unsent projections and does not send a stale selection', async () => {
-    store.setContext(inbox.owner, 'p', null);
+    store.setContext(inbox.owner, 'p', null, credentials.testChatId);
     panel.sync();
-    store.setContext(inbox.owner, 'readonly', null);
+    store.setContext(inbox.owner, 'readonly', null, credentials.testChatId);
     panel.sync();
     expect(rows().map((r) => r.state)).toEqual(['superseded', 'pending']);
     await sender.flushOne();
@@ -174,7 +176,7 @@ describe('durable context panel and bot menu (real SQLite, simulated Feishu)', (
     await initial();
     expect(rows()[0].state).toBe('unknown');
     expect(panelRow().message_id).toBeNull();
-    store.setContext(inbox.owner, 'readonly', null);
+    store.setContext(inbox.owner, 'readonly', null, credentials.testChatId);
     expect(panel.sync()).toBe(false);
     expect(creates).toBe(1);
     await sender.reconcileOne();
@@ -191,11 +193,11 @@ describe('durable context panel and bot menu (real SQLite, simulated Feishu)', (
     api.update = async () => {
       throw new FeishuApiError('unknown');
     };
-    store.setContext(inbox.owner, 'readonly', null);
+    store.setContext(inbox.owner, 'readonly', null, credentials.testChatId);
     panel.sync();
     await sender.flushOne();
     const blocked = rows().at(-1);
-    store.setContext(inbox.owner, 'p', null);
+    store.setContext(inbox.owner, 'p', null, credentials.testChatId);
     expect(panel.sync()).toBe(false);
     const t = task();
     db.prepare('UPDATE outbox SET owner_key=?,chat_id=? WHERE task_id=?').run(
@@ -244,7 +246,7 @@ describe('durable context panel and bot menu (real SQLite, simulated Feishu)', (
     expect(rows().at(-1).outbox_id).toBe(id);
     const claim = sender.outbox.claim(rotateAt);
     sender.outbox.fail(claim.claim_token, 'retryable-rejection', rotateAt, 60_000);
-    store.setContext(inbox.owner, 'readonly', null);
+    store.setContext(inbox.owner, 'readonly', null, credentials.testChatId);
     panel.sync(rotateAt + 200);
     expect(rows().at(-1).next_retry_at).toBe(rotateAt + 60_000);
     expect(sender.outbox.claim(rotateAt + 300)).toBeNull();
@@ -336,7 +338,7 @@ describe('durable context panel and bot menu (real SQLite, simulated Feishu)', (
   });
   it('routes menu actions without submitting tasks or turning the menu key into model input', async () => {
     const t = task();
-    store.setContext(inbox.owner, 'p', t.task_id);
+    store.setContext(inbox.owner, 'p', t.task_id, credentials.testChatId);
     inbox.receive('menu', menu('codex_new_topic'));
     await commands.processNext();
     expect(panel.context().task_id).toBeNull();
@@ -348,6 +350,20 @@ describe('durable context panel and bot menu (real SQLite, simulated Feishu)', (
       .all()
       .map((r) => JSON.parse(r.payload));
     expect(notices.some((n) => n.title === '选择项目')).toBe(true);
+  });
+  it('refreshes the canonical panel without creating an extra snapshot or navigation view', async () => {
+    await initial();
+    const id = panelRow().message_id;
+    inbox.receive('action', action(button('refresh')));
+    await commands.processNext();
+    panel.sync();
+    while (await sender.flushOne());
+    expect(creates).toBe(1);
+    expect(panelRow().message_id).toBe(id);
+    expect(db.prepare('SELECT count(*) FROM outbox WHERE panel_id IS NULL').pluck().get()).toBe(0);
+    expect(db.prepare('SELECT count(*) FROM outbox WHERE view_id IS NOT NULL').pluck().get()).toBe(
+      0,
+    );
   });
   it('allows repeated panel navigation clicks but does not replay a redelivered event', async () => {
     await initial();
@@ -364,7 +380,7 @@ describe('durable context panel and bot menu (real SQLite, simulated Feishu)', (
     await initial();
     const old = button('new_topic');
     const t = task();
-    store.setContext(inbox.owner, 'p', t.task_id);
+    store.setContext(inbox.owner, 'p', t.task_id, credentials.testChatId);
     inbox.receive('action', action(old));
     await commands.processNext();
     expect(panel.context().task_id).toBe(t.task_id);
@@ -375,16 +391,17 @@ describe('durable context panel and bot menu (real SQLite, simulated Feishu)', (
         )
         .pluck()
         .get(),
-    ).toBe(1);
+    ).toBe(0);
+    expect(db.prepare('SELECT refresh_requested FROM feishu_panels').pluck().get()).toBe(1);
   });
   it('rolls back a new-topic selection when the acknowledgement cannot be saved', async () => {
     const t = task();
-    store.setContext(inbox.owner, 'p', t.task_id);
+    store.setContext(inbox.owner, 'p', t.task_id, credentials.testChatId);
     panel.sync();
     await sender.flushOne();
     const row = button('new_topic');
     db.exec(
-      "CREATE TRIGGER fail_panel_reply BEFORE INSERT ON outbox WHEN json_extract(NEW.payload,'$.title')='新话题已准备好' BEGIN SELECT RAISE(ABORT,'fixture'); END",
+      "CREATE TRIGGER fail_panel_reply BEFORE UPDATE ON feishu_commands WHEN NEW.state='processed' BEGIN SELECT RAISE(ABORT,'fixture'); END",
     );
     inbox.receive('action', action(row));
     await commands.processNext();

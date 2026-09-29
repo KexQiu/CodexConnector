@@ -152,7 +152,7 @@ export async function runService(
     rpc?.close();
     rpc = undefined;
     const owned = child;
-    if (owned) await stopOwnedChild(owned, options.desktop ?? false);
+    if (owned) await stopOwnedChild(owned, role === 'gateway' || (options.desktop ?? false));
     child = undefined;
     leases.child(token, null);
     options.onChild?.(null);
@@ -178,6 +178,10 @@ export async function runService(
             signal: controller.signal,
             ...(options.credentials ? { credentials: options.credentials } : {}),
             interruptOnStop: options.desktop ?? false,
+            onOrdinaryChild: (owned) => {
+              child = owned;
+              leases.child(token, owned?.pid ?? null, true);
+            },
             rpcAllowed: () => readHealth(config.dataDir, 'app-server').ready,
             observe: (value) => {
               Object.assign(state, value);
@@ -212,6 +216,7 @@ export async function runService(
           state.phase = 'retrying';
           state.error = gatewayErrorMessage(error);
           publish();
+          await stopChild();
           await wait(Math.min(60_000, 1000 * 2 ** Math.min(attempts++, 6)));
         }
       }
@@ -353,7 +358,8 @@ export async function runService(
         publish();
       } finally {
         // A surviving owned child must continue blocking another supervisor.
-        if (!child || !ownedChildAlive(child, options.desktop ?? false)) leases.release(token);
+        if (!child || !ownedChildAlive(child, role === 'gateway' || (options.desktop ?? false)))
+          leases.release(token);
         leases.close();
         process.off('SIGTERM', stop);
         process.off('SIGINT', stop);

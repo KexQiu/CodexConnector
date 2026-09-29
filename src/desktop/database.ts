@@ -48,7 +48,7 @@ function assertIntegrity(db: Database.Database) {
     throw new Error('任务数据库完整性检查失败，已停止升级；请保留原数据库和备份。');
 }
 
-function staleLeaseTables(db: Database.Database): string[] {
+function staleLeaseTables(db: Database.Database, preservePending = false): string[] {
   const tables = ['worker_lease', 'feishu_runtime_lease'].filter((table) =>
     db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(table),
   );
@@ -60,6 +60,7 @@ function staleLeaseTables(db: Database.Database): string[] {
       throw new Error('仍有 Gateway/worker 运行或无法确认旧进程已退出，数据库尚未升级。');
   }
   if (
+    !preservePending &&
     db
       .prepare(
         "SELECT 1 FROM tasks WHERE status NOT IN ('completed','failed','interrupted') LIMIT 1",
@@ -85,7 +86,7 @@ export async function prepareDesktopDatabase(dataDir: string, signal?: AbortSign
     const before = schemaVersion(source);
     if (before === 0 || before === SCHEMA_VERSION) return;
     assertIntegrity(source);
-    staleLeaseTables(source);
+    staleLeaseTables(source, before >= 10);
     leases = new ServiceLeases(dataDir);
     if (leases.active().length)
       throw new Error('数据库升级前必须停止旧服务及其子进程，原数据已保留。');
@@ -111,15 +112,14 @@ export async function prepareDesktopDatabase(dataDir: string, signal?: AbortSign
     if (signal?.aborted) throw new Error('启动已取消');
     const db = openGatewayDatabase(path);
     try {
-      db.transaction(() => {
+      migrate(db, () => {
         if (schemaVersion(db) !== before || leases!.active().some((row) => row.token !== token))
           throw new Error('备份期间数据库或服务状态发生变化，已取消升级；请停止其他实例后重试。');
-        const tables = staleLeaseTables(db);
+        const tables = staleLeaseTables(db, before >= 10);
         // Only proven-dead PID rows are removed, and only inside the same
         // transaction as migration. Failure restores both locks and schema.
         for (const table of tables) db.prepare(`DELETE FROM ${table}`).run();
-        migrate(db);
-      }).immediate();
+      });
     } catch {
       throw new Error(
         '任务数据库升级未完成，原版本和运行锁已保留；升级前备份位于数据目录的 backups 中。',

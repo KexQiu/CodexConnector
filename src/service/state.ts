@@ -20,6 +20,9 @@ export const healthSchema = z.object({
   rpcReady: z.boolean(),
   feishuConnected: z.boolean(),
   error: z.string().nullable(),
+  projectless: z
+    .object({ enabled: z.boolean(), ready: z.boolean(), error: z.string().nullable() })
+    .optional(),
   notify: z
     .object({
       enabled: z.boolean(),

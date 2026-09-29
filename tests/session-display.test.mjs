@@ -68,6 +68,7 @@ describe('project defaults, historical usage and independent quota command', () 
     store = new TaskStore(db);
     metrics = new StatusMetrics(store, ownerKey(owner));
     task = store.submit({
+      chatId: credentials.testChatId,
       owner,
       requestKey: 'fixture',
       projectKey: 'p',
@@ -285,7 +286,7 @@ describe('project defaults, historical usage and independent quota command', () 
   });
   it('waits for session data before /当前, isolates /额度 and preserves selection/deduplication', async () => {
     write(token());
-    store.setContext(metrics.owner, 'p', task.task_id);
+    store.setContext(metrics.owner, 'p', task.task_id, credentials.testChatId);
     const inbox = new FeishuInbox(store, credentials);
     const commands = new FeishuCommands(
       inbox,

@@ -1,6 +1,6 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, safeStorage, shell, Menu } from 'electron';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
 import { resolveCodexBinary } from '../../../src/codex/binary.js';
 import { pathToFileURL } from 'node:url';
@@ -19,10 +19,16 @@ import { canonicalDirectory } from '../../../src/projects/store.js';
 
 const runtimeRoot = app.isPackaged
   ? join(process.resourcesPath, 'desktop-runtime')
-  : join(__dirname, '../../../.artifacts/desktop-runtime');
+  : resolve(
+      process.env.CONNECTOR_DEV_RUNTIME_ROOT ??
+        join(__dirname, '../../../.artifacts/desktop-runtime'),
+    );
 const root = app.isPackaged
   ? join(homedir(), 'Library/Application Support/CodexConnector')
-  : join(__dirname, '../../../.artifacts/desktop-user-data');
+  : resolve(
+      process.env.CONNECTOR_DEV_DATA_ROOT ??
+        join(__dirname, '../../../.artifacts/desktop-user-data'),
+    );
 app.setPath('userData', root);
 let window: BrowserWindow | null = null;
 let backend: Backend;
@@ -103,6 +109,8 @@ async function handle(request: UiRequest): Promise<unknown> {
       vault.write('active', record);
       return snapshot();
     }
+    case 'checkProjectless':
+      return backend.request('projectlessCheck', request.binary);
     case 'checkCodex':
       return backend.request('doctor', request.binary);
     case 'checkFeishu': {

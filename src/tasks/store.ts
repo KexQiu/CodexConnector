@@ -21,6 +21,7 @@ import {
 import type { RpcNotification, RpcServerRequest } from '../codex/rpc-client.js';
 import { maxConcurrentTasksSchema } from '../config/project-policy.js';
 import { contains } from '../projects/store.js';
+import { ConversationStore } from '../conversations/store.js';
 
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 export const ownerKey = (owner: OwnerIdentity) =>
@@ -29,13 +30,16 @@ const eventRow = z.object({ inbox_id: z.string(), method: z.string(), payload: z
 const threadRow = z.object({
   thread_id: z.string(),
   owner_key: z.string(),
-  project_key: z.string(),
+  project_key: z.string().nullable(),
+  conversation_id: z.string(),
   cwd: z.string(),
 });
 
 export class TaskStore {
+  readonly conversations: ConversationStore;
   constructor(readonly db: Database.Database) {
     migrate(db);
+    this.conversations = new ConversationStore(db);
   }
 
   get(id: string): StoredTask {
@@ -65,11 +69,29 @@ export class TaskStore {
     if (!row) throw new TaskError('只能继续当前用户拥有的 Gateway 会话');
     return threadRow.parse(row);
   }
+  queued(owner: string) {
+    return this.db
+      .prepare(
+        `SELECT t.* FROM tasks t WHERE t.owner_key=? AND t.status='queued'
+      ORDER BY coalesce((SELECT min(f.created_at) FROM feishu_commands f WHERE f.task_id=t.task_id AND f.target_conversation_id=t.conversation_id),t.created_at),
+      coalesce((SELECT min(f.rowid) FROM feishu_commands f WHERE f.task_id=t.task_id AND f.target_conversation_id=t.conversation_id),t.rowid),t.task_id`,
+      )
+      .all(owner)
+      .map((row) => taskRowSchema.parse(row));
+  }
 
+  request(owner: string, requestKey: string) {
+    const row = this.db
+      .prepare('SELECT * FROM tasks WHERE request_key=? AND owner_key=?')
+      .get(hash(JSON.stringify([owner, 'local', requestKey])), owner);
+    return row ? taskRowSchema.parse(row) : null;
+  }
   submit(input: {
     owner: OwnerIdentity;
     requestKey: string;
-    projectKey: string;
+    projectKey: string | null;
+    conversationId?: string;
+    chatId?: string;
     cwd: string;
     prompt: string;
     threadId?: string;
@@ -83,15 +105,43 @@ export class TaskStore {
       throw new TaskError('请求标识或任务内容无效');
     const owner = ownerKey(input.owner);
     const key = hash(JSON.stringify([owner, 'local', input.requestKey]));
-    const fingerprint = hash(
+    const legacyFingerprint = hash(
       JSON.stringify([input.projectKey, input.cwd, input.prompt, input.threadId ?? null]),
     );
+    const fingerprint = input.conversationId
+      ? hash(
+          JSON.stringify([
+            'conversation-v2',
+            input.conversationId,
+            input.projectKey,
+            input.cwd,
+            input.prompt,
+          ]),
+        )
+      : legacyFingerprint;
     return this.db
       .transaction(() => {
         const existing = this.db.prepare('SELECT * FROM tasks WHERE request_key = ?').get(key);
         if (existing) {
           const task = taskRowSchema.parse(existing);
-          if (task.fingerprint !== fingerprint)
+          const legacyBoundRetry =
+            task.fingerprint_version === 1 &&
+            input.conversationId === task.conversation_id &&
+            task.project_key === input.projectKey &&
+            task.cwd === input.cwd &&
+            task.prompt === input.prompt &&
+            (!input.threadId || input.threadId === task.thread_id) &&
+            [null, task.thread_id].some(
+              (thread) =>
+                task.fingerprint ===
+                hash(JSON.stringify([task.project_key, task.cwd, task.prompt, thread])),
+            );
+          if (input.conversationId)
+            this.conversations.owned(input.conversationId, owner, input.chatId);
+          if (
+            !legacyBoundRetry &&
+            task.fingerprint !== (task.fingerprint_version === 1 ? legacyFingerprint : fingerprint)
+          )
             throw new TaskError('同一 request-key 不能用于不同任务');
           return { task, duplicate: true };
         }
@@ -100,6 +150,29 @@ export class TaskStore {
           if (thread.cwd !== input.cwd || thread.project_key !== input.projectKey)
             throw new TaskError('会话执行目录或项目不匹配');
         }
+        const conversation = input.conversationId
+          ? this.conversations.owned(input.conversationId, owner, input.chatId)
+          : input.threadId
+            ? this.conversations.owned(
+                this.ownedThread(input.threadId, owner).conversation_id,
+                owner,
+                input.chatId,
+              )
+            : input.projectKey !== null
+              ? this.conversations.create({
+                  owner,
+                  ...(input.chatId ? { chat: input.chatId } : {}),
+                  scope: { kind: 'project', projectKey: input.projectKey },
+                  cwd: input.cwd,
+                })
+              : null;
+        if (
+          !conversation ||
+          conversation.cwd !== input.cwd ||
+          conversation.project_key !== input.projectKey ||
+          (input.threadId && conversation.thread_id !== input.threadId)
+        )
+          throw new TaskError('任务与会话范围不匹配');
         const taskId = randomUUID(),
           inboxId = randomUUID(),
           now = Date.now();
@@ -110,7 +183,7 @@ export class TaskStore {
           .run(inboxId, key, JSON.stringify({ taskId }), now, now);
         this.db
           .prepare(
-            `INSERT INTO tasks (task_id,request_key,fingerprint,owner_key,owner_json,project_key,cwd,prompt,thread_id,status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,'queued',?,?)`,
+            `INSERT INTO tasks (task_id,request_key,fingerprint,owner_key,owner_json,project_key,cwd,prompt,thread_id,status,created_at,updated_at,conversation_id,fingerprint_version) VALUES (?,?,?,?,?,?,?,?,?,'queued',?,?,?,?)`,
           )
           .run(
             taskId,
@@ -124,10 +197,15 @@ export class TaskStore {
             input.threadId ?? null,
             now,
             now,
+            conversation.conversation_id,
+            input.conversationId ? 2 : 1,
           );
         this.db
           .prepare("INSERT INTO commands VALUES (?, ?, ?, 'queued')")
           .run(randomUUID(), inboxId, taskId);
+        this.db
+          .prepare('UPDATE conversations SET updated_at=? WHERE conversation_id=?')
+          .run(now, conversation.conversation_id);
         this.snapshot(this.get(taskId));
         return { task: this.get(taskId), duplicate: false };
       })
@@ -236,12 +314,35 @@ export class TaskStore {
     const limit = maxConcurrentTasksSchema.parse(options.maxConcurrentTasks);
     return this.db
       .transaction(() => {
-        const task = this.get(id);
+        let task = this.get(id);
+        const conversation = this.conversations.owned(task.conversation_id, task.owner_key);
+        if (task.status === 'queued' && !task.thread_id && conversation.thread_id) {
+          this.db
+            .prepare('UPDATE tasks SET thread_id=? WHERE task_id=?')
+            .run(conversation.thread_id, id);
+          task = this.get(id);
+        }
         const occupied = this.db
           .prepare("SELECT count(*) FROM tasks WHERE status IN ('starting','running','unknown')")
           .pluck()
           .get() as number;
         if (task.status !== 'queued' || occupied >= limit) return null;
+        if (
+          this.queued(task.owner_key).find(
+            (candidate) => candidate.conversation_id === task.conversation_id,
+          )?.task_id !== id
+        )
+          return null;
+        // A prior message whose target was committed but submission needs retry
+        // must not be overtaken by a later task in the same conversation.
+        if (
+          this.db
+            .prepare(
+              "SELECT 1 FROM feishu_commands WHERE target_conversation_id=? AND state!='processed' AND task_id IS NULL AND created_at<=? LIMIT 1",
+            )
+            .get(task.conversation_id, task.created_at)
+        )
+          return null;
         const root = options.checkoutRoot ?? task.cwd;
         const locks = z
           .array(z.object({ lock_key: z.string() }))
@@ -250,6 +351,7 @@ export class TaskStore {
           locks.some(
             ({ lock_key: key }) =>
               key === `thread:${task.thread_id}` ||
+              key === `conversation:${task.conversation_id}` ||
               (key.startsWith('checkout:') &&
                 (contains(root, key.slice(9)) || contains(key.slice(9), root))),
           )
@@ -257,6 +359,7 @@ export class TaskStore {
           return null;
         for (const key of [
           `checkout:${root}`,
+          `conversation:${task.conversation_id}`,
           ...(task.thread_id ? [`thread:${task.thread_id}`] : []),
         ]) {
           this.db.prepare('INSERT INTO execution_locks VALUES (?, ?, ?)').run(key, id, Date.now());
@@ -298,18 +401,39 @@ export class TaskStore {
     return this.db
       .transaction(() => {
         const task = this.get(id);
+        const conversation = this.conversations.owned(task.conversation_id, task.owner_key);
         if (cwd !== task.cwd || (task.thread_id && task.thread_id !== threadId))
           throw new TaskError('RPC 会话目录或 ID 不匹配');
+        if (conversation.thread_id && conversation.thread_id !== threadId)
+          throw new TaskError('会话已经绑定其他 Codex 线程');
         const existing = this.db.prepare('SELECT * FROM threads WHERE thread_id = ?').get(threadId);
         if (existing) {
           const thread = threadRow.parse(existing);
-          if (!task.thread_id || thread.owner_key !== task.owner_key || thread.cwd !== cwd)
+          if (
+            !task.thread_id ||
+            thread.owner_key !== task.owner_key ||
+            thread.cwd !== cwd ||
+            thread.conversation_id !== task.conversation_id
+          )
             throw new TaskError('RPC 会话归属冲突');
         } else {
           this.db
-            .prepare("INSERT INTO threads VALUES (?, ?, ?, ?, ?, 'gateway', ?)")
-            .run(threadId, task.owner_key, task.owner_json, task.project_key, cwd, Date.now());
+            .prepare(
+              "INSERT INTO threads (thread_id,owner_key,owner_json,project_key,cwd,origin,created_at,conversation_id) VALUES (?, ?, ?, ?, ?, 'gateway', ?, ?)",
+            )
+            .run(
+              threadId,
+              task.owner_key,
+              task.owner_json,
+              task.project_key,
+              cwd,
+              Date.now(),
+              task.conversation_id,
+            );
         }
+        this.db
+          .prepare('UPDATE conversations SET thread_id=?,updated_at=? WHERE conversation_id=?')
+          .run(threadId, Date.now(), task.conversation_id);
         this.db
           .prepare('INSERT OR IGNORE INTO execution_locks VALUES (?, ?, ?)')
           .run(`thread:${threadId}`, id, Date.now());
@@ -544,17 +668,26 @@ export class TaskStore {
         Date.now(),
       );
   }
-  setContext(owner: string, projectKey: string, taskId: string | null) {
+  setContext(
+    owner: string,
+    projectKey: string | null,
+    taskId: string | null,
+    chat = '',
+    conversationId?: string | null,
+  ) {
     if (
       taskId &&
       (this.get(taskId).owner_key !== owner || this.get(taskId).project_key !== projectKey)
     )
       throw new TaskError('上下文归属不匹配');
-    this.db
-      .prepare(
-        'INSERT INTO user_context VALUES (?, ?, ?, ?) ON CONFLICT(owner_key) DO UPDATE SET project_key = excluded.project_key, task_id = excluded.task_id, updated_at = excluded.updated_at',
-      )
-      .run(owner, projectKey, taskId, Date.now());
+    const conversation = conversationId ?? (taskId ? this.get(taskId).conversation_id : null);
+    this.conversations.select(
+      owner,
+      chat,
+      projectKey === null ? { kind: 'projectless' } : { kind: 'project', projectKey },
+      conversation,
+      taskId,
+    );
   }
   diagnostics() {
     return {

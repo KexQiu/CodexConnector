@@ -42,14 +42,7 @@ export class ContextPanel {
     readonly chat: string,
   ) {}
   context() {
-    return z
-      .object({ project_key: z.string(), task_id: z.string().nullable() })
-      .optional()
-      .parse(
-        this.store.db
-          .prepare('SELECT project_key,task_id FROM user_context WHERE owner_key=?')
-          .get(this.owner),
-      );
+    return this.store.conversations.context(this.owner, this.chat);
   }
   request() {
     this.store.db
@@ -61,18 +54,13 @@ export class ContextPanel {
   }
   snapshot(now = Date.now()) {
     const context = this.context();
+    const projectless = context?.scope_kind === 'projectless';
     const project = this.config.projects.find((p) => p.key === context?.project_key);
     const task = context?.task_id ? this.store.get(context.task_id) : null;
     if (task && (task.owner_key !== this.owner || task.project_key !== context?.project_key))
       throw new Error('Panel context ownership mismatch');
     const tasks = task
-      ? this.store
-          .list(this.owner)
-          .filter(
-            (t) =>
-              t.project_key === task.project_key &&
-              (task.thread_id ? t.thread_id === task.thread_id : t.task_id === task.task_id),
-          )
+      ? this.store.list(this.owner).filter((t) => t.conversation_id === task.conversation_id)
       : [];
     const active = tasks
       .filter((t) => ['running', 'starting', 'unknown'].includes(t.status))
@@ -98,9 +86,9 @@ export class ContextPanel {
         : stateNames[state.status]
       : '等待发送需求';
     const text =
-      `当前项目：${project ? shortText(project.name, 80) + '（' + project.key + '）' : (context?.project_key ?? '尚未选择')}\n` +
+      `当前项目：${project ? shortText(project.name, 80) + '（' + project.key + '）' : projectless ? '无项目' : (context?.project_key ?? '尚未选择（直接发送开始无项目聊天）')}\n` +
       `当前会话：${task ? topicTitle(this.store, task) : '新话题'}\n任务状态：${status}\n` +
-      `排队消息：${queued + waiting} 条\n权限：${projectPermissionLabel(project)}\n` +
+      `排队消息：${queued + waiting} 条\n权限：${projectless ? '普通聊天，仅允许内置时钟' : projectPermissionLabel(project)}\n` +
       metrics.sessionText(
         task?.thread_id ?? null,
         state?.turn_id ?? null,
@@ -111,19 +99,19 @@ export class ContextPanel {
       '\n' +
       (state?.waiting_approval ? '等待审批，请在对应任务卡操作。\n' : '') +
       (state?.waiting_input ? '等待补充输入，请查看对应任务卡。\n' : '') +
-      (context && !canExecuteProject(project) ? '该项目未开放执行权限。\n' : '') +
+      (context && !projectless && !canExecuteProject(project) ? '该项目未开放执行权限。\n' : '') +
       (!context
-        ? '先选择项目，或直接发送需求后按提示选择。'
+        ? '直接发送消息开始无项目聊天；需要处理文件时先选择项目。'
         : task
           ? '下一条普通消息继续当前会话；执行中会排队。'
-          : '下一条普通消息将在当前项目新建会话。') +
+          : '下一条普通消息将在当前范围新建会话。') +
       '\n引用其他任务卡时，以被回复的话题为准。';
     const buttons: NoticeButton[] = [
       ...(context
         ? [
             {
               label: '切换会话',
-              action: 'sessions' as const,
+              action: projectless ? ('projectless_sessions' as const) : ('sessions' as const),
               projectKey: context.project_key,
               choice: 'gateway' as const,
               page: 0,
@@ -160,7 +148,11 @@ export class ContextPanel {
     ];
     const layout: CardLayout = {
       version: 1,
-      eyebrow: project ? `${shortText(project.name, 80)} · ${project.key}` : '尚未选择项目',
+      eyebrow: project
+        ? `${shortText(project.name, 80)} · ${project.key}`
+        : projectless
+          ? '无项目 · 普通聊天'
+          : '尚未选择项目',
       heading: task ? topicTitle(this.store, task) : '新话题',
       status:
         (state?.waiting_approval ? '等待审批' : state?.waiting_input ? '等待补充输入' : status) +
@@ -179,24 +171,36 @@ export class ContextPanel {
         ...(state?.waiting_approval ? ['请在对应任务卡查看操作范围并选择是否批准。'] : []),
         ...(state?.waiting_input ? ['需要补充输入，请查看对应任务卡。'] : []),
         ...(state && taskFailureDescription(state) ? [taskFailureDescription(state)] : []),
-        ...(context && !canExecuteProject(project) ? ['该项目目前只读，未开放执行权限。'] : []),
+        ...(context && !projectless && !canExecuteProject(project)
+          ? ['该项目目前只读，未开放执行权限。']
+          : []),
       ],
-      sections: project
-        ? sessionSections(
-            metrics,
-            task?.thread_id ?? null,
-            state?.turn_id ?? null,
-            project.key,
-            project.root,
-          )
-        : [],
+      sections:
+        project || projectless
+          ? sessionSections(
+              metrics,
+              task?.thread_id ?? null,
+              state?.turn_id ?? null,
+              project?.key ?? null,
+              project?.root ?? task?.cwd,
+            )
+          : [],
       notes: [
-        ...(project ? [`权限：${projectPermissionLabel(project)}`] : []),
+        ...(projectless
+          ? [
+              this.config.projectless?.enabled === false
+                ? '无项目对话已关闭，历史仍可查看。'
+                : '普通聊天：文件、命令和外部工具均已禁用；仅允许内置时钟。',
+            ]
+          : []),
+        ...(project
+          ? [`权限：${projectless ? '普通聊天，仅允许内置时钟' : projectPermissionLabel(project)}`]
+          : []),
         !context
-          ? '先选择项目，或直接发送需求后按提示选择。'
+          ? '直接发送消息开始无项目聊天；需要处理文件时先选择项目。'
           : task
             ? '下一条普通消息继续当前会话；执行中会排队。'
-            : '直接发送需求，在当前项目开始新话题。',
+            : '直接发送需求，在当前范围开始新话题。',
         '引用其他任务卡时，以被回复的话题为准。',
       ],
     };

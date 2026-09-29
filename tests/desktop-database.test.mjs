@@ -56,6 +56,31 @@ const assertUnchanged = () => {
 };
 
 describe('desktop database upgrades', () => {
+  it('backs up and preserves v10 unknown work and locks while adding local conversations', async () => {
+    const tenth = migrationSources().find((m) => m.version === 10);
+    db.exec(tenth.sql);
+    db.prepare('INSERT INTO schema_migrations VALUES (?,?)').run(tenth.version, tenth.checksum);
+    db.pragma('user_version=10');
+    addTask('unknown');
+    db.prepare('INSERT INTO execution_locks VALUES (?,?,?)').run('checkout:' + root, 'task-1', 1);
+    const result = await prepareDesktopDatabase(root);
+    expect(result).toMatchObject({ from: 10, to: SCHEMA_VERSION });
+    expect(
+      db.prepare('SELECT status,fingerprint,request_key,conversation_id FROM tasks').get(),
+    ).toMatchObject({
+      status: 'unknown',
+      fingerprint: 'fingerprint',
+      request_key: 'request-1',
+      conversation_id: expect.any(String),
+    });
+    expect(db.prepare('SELECT count(*) FROM execution_locks').pluck().get()).toBe(1);
+    expect(db.prepare('SELECT chat_id FROM conversations').pluck().get()).toBeNull();
+    const original = database.openReadonlyDatabase(result.backup);
+    expect(original.pragma('user_version', { simple: true })).toBe(10);
+    expect(original.prepare('SELECT status FROM tasks').pluck().get()).toBe('unknown');
+    original.close();
+  });
+
   it('backs up v9 with stale locks, upgrades atomically and preserves history and dedup keys', async () => {
     addTask('completed');
     const result = await prepareDesktopDatabase(root);

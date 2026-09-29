@@ -3,7 +3,7 @@ import { WSClient } from '@larksuiteoapi/node-sdk';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { GatewayConfig } from '../config/schema.js';
 import { ProjectStore } from '../projects/store.js';
-import { TaskWorker } from '../tasks/worker.js';
+import { type OrdinaryBackend, TaskWorker } from '../tasks/worker.js';
 import type { TaskStore } from '../tasks/store.js';
 import { TaskError } from '../tasks/types.js';
 import { FeishuInbox } from './inbound.js';
@@ -34,9 +34,14 @@ export class FeishuRuntime {
     readonly store: TaskStore,
     readonly config: GatewayConfig,
     readonly credentials: FeishuCredentials,
-    private readonly options: { prefix?: string; api?: FeishuApi; rpcAllowed?: () => boolean } = {},
+    private readonly options: {
+      prefix?: string;
+      api?: FeishuApi;
+      rpcAllowed?: () => boolean;
+      ordinary?: OrdinaryBackend;
+    } = {},
   ) {
-    this.worker = new TaskWorker(store, config);
+    this.worker = new TaskWorker(store, config, options.ordinary, credentials.testChatId);
     this.api = options.api ?? new FeishuApi(credentials);
     this.inbox = new FeishuInbox(store, credentials, options.prefix);
     this.sender = new FeishuSender(store, credentials, this.api, config.projects);
@@ -52,6 +57,11 @@ export class FeishuRuntime {
       this.worker.rpc.isReady && (this.options.rpcAllowed?.() ?? true) && !this.closing;
     return {
       rpcReady,
+      projectless: {
+        enabled: this.config.projectless?.enabled !== false,
+        ready: !this.closing && !!this.options.ordinary?.ready,
+        error: this.options.ordinary?.error ?? null,
+      },
       feishuConnected: this.connected && !this.closing,
       ready: rpcReady && this.connected && !this.closing,
       ...(this.config.notify
@@ -159,7 +169,12 @@ export class FeishuRuntime {
       this.nextReconnect =
         Date.now() + Math.min(60_000, 1000 * 2 ** Math.min(this.reconnectAttempts++, 6));
       this.worker.close();
-      this.worker = new TaskWorker(this.store, this.config);
+      this.worker = new TaskWorker(
+        this.store,
+        this.config,
+        this.options.ordinary,
+        this.credentials.testChatId,
+      );
       this.commands = new FeishuCommands(
         this.inbox,
         this.config,

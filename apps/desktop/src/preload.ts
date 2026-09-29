@@ -14,6 +14,7 @@ const api: DesktopApi = {
   load: () => invoke({ method: 'load' }),
   saveDraft: (settings, secret) => invoke({ method: 'saveDraft', settings, secret }),
   apply: (settings, secret) => invoke({ method: 'apply', settings, secret }),
+  checkProjectless: (binary) => invoke({ method: 'checkProjectless', binary }),
   checkCodex: (binary) => invoke({ method: 'checkCodex', binary }),
   checkFeishu: (settings, secret) => invoke({ method: 'checkFeishu', settings, secret }),
   start: () => invoke({ method: 'start' }),

@@ -159,7 +159,7 @@ describe('session navigation, complete replies and ID copy entry', () => {
     expect(card.layout.sections.filter((s) => s.title.startsWith('当前'))).toHaveLength(1);
     expect(JSON.stringify(card)).not.toContain('SECRET_OTHER_OWNER');
   });
-  it('switches from a titled list without creating a task and accepts a new click while deduplicating redelivery', async () => {
+  it('switches in place without creating a task, retires old buttons, and deduplicates redelivery', async () => {
     const a = await task('话题 A');
     await task('话题 B');
     await receive('/会话 p');
@@ -168,9 +168,30 @@ describe('session navigation, complete replies and ID copy entry', () => {
     const { row, event } = await click('select', { task_id: a.task_id });
     expect(db.prepare('SELECT task_id FROM user_context').pluck().get()).toBe(a.task_id);
     expect(inbox.receive('action', event).outcome).toBe('duplicate');
-    expect(inbox.receive('action', action(row)).outcome).toBe('accepted');
-    await commands.processNext();
+    expect(inbox.receive('action', action(row)).outcome).toBe('expired-or-invalid');
+    await click('details', { task_id: a.task_id });
     expect(store.list()).toHaveLength(before);
+  });
+  it('keeps task cards in their task update lane when selecting or opening a browsing view', async () => {
+    const a = await task('A');
+    await task('B');
+    store.refresh(a.task_id);
+    await flush();
+    const original = store.get(a.task_id).notification_message_id;
+    const count = messages.length;
+    await click('select', { task_id: a.task_id, message_id: original });
+    expect(messages).toHaveLength(count);
+    expect(store.get(a.task_id).notification_message_id).toBe(original);
+    await click('details', { task_id: a.task_id, message_id: original });
+    expect(messages).toHaveLength(count + 1);
+    expect(messages.at(-1).id).not.toBe(original);
+    expect(store.get(a.task_id).notification_message_id).toBe(original);
+    expect(
+      db
+        .prepare('SELECT count(*) FROM outbox WHERE task_id IS NOT NULL AND view_id IS NOT NULL')
+        .pluck()
+        .get(),
+    ).toBe(0);
   });
   it('does not infer a target when replying to a multi-session list', async () => {
     await task('A');
@@ -182,7 +203,7 @@ describe('session navigation, complete replies and ID copy entry', () => {
     await receive('继续处理', message);
     await flush();
     expect(store.list()).toHaveLength(count);
-    expect(JSON.stringify(messages.at(-1))).toContain('包含多个会话');
+    expect(JSON.stringify(messages.at(-1))).toContain('没有唯一会话');
   });
   it('places each list action beside its row and keeps all rows to two bordered buttons', async () => {
     await task('A');

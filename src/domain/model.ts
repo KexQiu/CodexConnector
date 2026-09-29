@@ -21,7 +21,8 @@ export interface ThreadRecord {
   threadId: string;
   owner: OwnerIdentity;
   origin: 'gateway';
-  projectKey: string;
+  projectKey: string | null;
+  conversationId: string;
   /** Canonical execution directory, including the specific checkout/worktree. */
   cwd: string;
   createdAtMs: number;
@@ -32,7 +33,8 @@ export interface TaskRecord {
   taskId: string;
   requestKey: string;
   owner: OwnerIdentity;
-  projectKey: string;
+  projectKey: string | null;
+  conversationId: string;
   cwd: string;
   threadId: string | null;
   turnId: string | null;

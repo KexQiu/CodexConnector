@@ -21,6 +21,10 @@ export const uiActionSchema = z.enum([
   'tasks',
   'create_project',
   'cancel_project',
+  'projectless_sessions',
+  'projectless_new',
+  'back',
+  'quota',
 ]);
 export const noticeButtonSchema = z.object({
   label: z.string().min(1).max(80),
@@ -38,6 +42,10 @@ export const noticeButtonSchema = z.object({
     'tasks',
     'create_project',
     'cancel_project',
+    'projectless_sessions',
+    'projectless_new',
+    'back',
+    'quota',
   ]),
   choice: z
     .enum(['refresh', 'new_topic', 'details', 'gateway', 'desktop'])
@@ -51,6 +59,7 @@ export const noticeButtonSchema = z.object({
 });
 export const noticeSchema = z.object({
   title: z.string(),
+  feedbackError: z.string().optional(),
   text: z.string(),
   buttons: z.array(noticeButtonSchema).max(12).default([]),
   layout: cardLayoutSchema.optional(),
@@ -66,14 +75,12 @@ export function shortText(text: string, limit = 60) {
 
 /** Stable topic title across turns; no model or extra RPC is needed. */
 export function topicTitle(store: TaskStore, task: StoredTask) {
-  const first = task.thread_id
-    ? store.db
-        .prepare(
-          'SELECT prompt FROM tasks WHERE thread_id=? AND owner_key=? ORDER BY created_at,rowid LIMIT 1',
-        )
-        .pluck()
-        .get(task.thread_id, task.owner_key)
-    : null;
+  const first = store.db
+    .prepare(
+      'SELECT prompt FROM tasks WHERE conversation_id=? AND owner_key=? ORDER BY created_at,rowid LIMIT 1',
+    )
+    .pluck()
+    .get(task.conversation_id, task.owner_key);
   return shortText(typeof first === 'string' ? first : task.prompt) || '未命名话题';
 }
 
@@ -87,12 +94,35 @@ export function queueNotice(
   buttons: NoticeButton[] = [],
   layout?: CardLayout,
 ) {
-  const payload = noticeSchema.parse({ title, text: text.slice(0, 5000), buttons, layout });
+  enqueueNotice(store, owner, chat, key, { title, text, buttons, layout });
+}
+
+export function enqueueNotice(
+  store: TaskStore,
+  owner: string,
+  chat: string,
+  key: string,
+  input: z.input<typeof noticeSchema>,
+  view?: { id: string; version: number; parent: string | null; message: string | null },
+) {
+  const payload = noticeSchema.parse({ ...input, text: input.text.slice(0, 5000) });
+  const id = randomUUID();
   store.db
     .prepare(
       `INSERT OR IGNORE INTO outbox
-    (outbox_id,logical_key,task_id,card_version,payload,state,created_at,owner_key,chat_id)
-    VALUES (?,?,NULL,1,?,'pending',?,?,?)`,
+    (outbox_id,logical_key,task_id,card_version,payload,state,created_at,owner_key,chat_id,view_id,view_parent_id,message_id)
+    VALUES (?,?,NULL,?,?,'pending',?,?,?,?,?,?)`,
     )
-    .run(randomUUID(), `feishu:reply:${key}`, JSON.stringify(payload), Date.now(), owner, chat);
+    .run(
+      id,
+      `feishu:reply:${key}`,
+      view?.version ?? 1,
+      JSON.stringify(payload),
+      Date.now(),
+      owner,
+      chat,
+      view?.id ?? id,
+      view?.parent ?? null,
+      view?.message ?? null,
+    );
 }

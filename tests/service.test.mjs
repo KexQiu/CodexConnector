@@ -330,7 +330,11 @@ describe('M5 private service ownership and durable maintenance', () => {
       runtime.connected = true;
       await runtime.tick();
       expect(start).not.toHaveBeenCalled();
-      expect(runtime.status()).toEqual({ rpcReady: false, feishuConnected: true, ready: false });
+      expect(runtime.status()).toMatchObject({
+        rpcReady: false,
+        feishuConnected: true,
+        ready: false,
+      });
       allowed = true;
       await runtime.tick();
       expect(start).toHaveBeenCalledTimes(1);
