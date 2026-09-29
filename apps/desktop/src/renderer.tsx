@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import type {
   CheckResult,
@@ -9,6 +9,7 @@ import type {
   LoginItemState,
 } from '../../../src/desktop/contracts.js';
 import './style.css';
+import { ConnectorMark, Icon } from './icons.js';
 import { FeedbackViewport, type FeedbackNotice } from './feedback.js';
 import { SelectField, TextInput, type SelectOption } from './form-controls.js';
 import { DesktopDraftCache, type DraftCacheState } from '../../../src/desktop/draft-cache.js';
@@ -59,33 +60,6 @@ const permissionOptions: SelectOption[] = [
     description: '允许在授权的项目范围内写入',
   },
 ];
-function Icon({ name }: { name: string }) {
-  const paths: Record<string, string> = {
-    overview: 'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',
-    feishu: 'M5 5h14v11H10l-5 4z M8 9h8 M8 12h5',
-    projects: 'M3 6h6l2 3h10v11H3z',
-    logs: 'M6 3h12v18H6z M9 8h6 M9 12h6 M9 16h4',
-    setup: 'M12 3v18 M3 12h18',
-    preferences: 'M4 7h16 M4 17h16 M8 4v6 M16 14v6',
-    arrow: 'M5 12h14 M14 7l5 5-5 5',
-    play: 'M8 5l11 7-11 7z',
-    stop: 'M6 6h12v12H6z',
-    check: 'M5 12l4 4L19 6',
-  };
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d={paths[name] ?? paths.setup} />
-    </svg>
-  );
-}
 function App() {
   const [snapshot, setSnapshot] = useState<DesktopSnapshot | null>(null);
   const [settings, setSettings] = useState<DesktopSettings | null>(null);
@@ -101,6 +75,7 @@ function App() {
   const [closing, setClosing] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [page, setPage] = useState<Page>('overview');
+  const contentRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState<FeedbackNotice | null>(null);
@@ -117,6 +92,7 @@ function App() {
   const refreshing = useRef(false);
   const lastProjectError = useRef('');
   const [projectStatus, setProjectStatus] = useState({ loading: false, error: false, text: '' });
+  const [unavailableProjectRoots, setUnavailableProjectRoots] = useState<string[]>([]);
   const [feishuCheck, setFeishuCheck] = useState<{
     phase: 'checking' | 'success' | 'error';
     text: string;
@@ -307,10 +283,16 @@ function App() {
         }
         const next = mergeDiscoveredProjects(latest, discovery);
         if (next !== latest) update(next);
+        const unavailableRoots = discovery.unavailableRoots ?? [];
+        setUnavailableProjectRoots(unavailableRoots);
+        const unavailableConfigured = next.projects.filter((p) =>
+          unavailableRoots.includes(p.root),
+        ).length;
         const text =
           `已刷新 · 发现 ${discovery.projects.length} 个项目（含远程创建）` +
           (discovery.warning ? ` · ${discovery.warning}` : '') +
           (discovery.unavailable ? ` · ${discovery.unavailable} 个目录暂不可用` : '') +
+          (unavailableConfigured ? ` · 已配置项目中有 ${unavailableConfigured} 个目录不可用` : '') +
           (next.projects.length >= 100 ? ' · 最多保留 100 个项目' : '');
         setProjectStatus({ loading: false, error: false, text });
         lastProjectError.current = '';
@@ -357,6 +339,9 @@ function App() {
   useEffect(() => {
     if (page === 'projects' || (page === 'setup' && step === 2)) refreshProjects().catch(() => {});
   }, [page, step, refreshProjects]);
+  useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }, [page, step]);
   function resetFeishuCheck() {
     checkRevision.current++;
     setFeishuCheck(null);
@@ -396,7 +381,7 @@ function App() {
     });
   }
   const button = (
-    label: string,
+    label: ReactNode,
     action: () => Promise<void>,
     primary = false,
     disabled = false,
@@ -437,6 +422,7 @@ function App() {
           }).catch(() => {});
         }}
       >
+        <Icon name="power" />
         {busy === '启动服务' ? '正在启动…' : '启动连接'}
       </button>
     );
@@ -510,7 +496,7 @@ function App() {
     return (
       <section className="panel">
         <div className="section-heading">
-          <span className="eyebrow">01 / CODEX</span>
+          <span className="eyebrow">CODEX RUNTIME</span>
           <h2>连接你的 Codex</h2>
           <p>复用这台 Mac 上的安装和登录状态。</p>
         </div>
@@ -690,45 +676,189 @@ function App() {
         });
     }
     return (
-      <section className="panel">
-        <div className="section-heading split">
-          <div>
-            <span className="eyebrow">LOCAL WORKSPACES</span>
-            <h2>选择可以连接的项目</h2>
-            <p>每个项目单独授权；远程创建的项目沿用本机预设权限。</p>
-          </div>
-          <div className="action-row">
-            {button(
-              projectStatus.loading ? '刷新中…' : '刷新项目',
-              () => refreshProjects(true),
-              false,
-              projectStatus.loading,
-            )}
-            {button('＋ 添加项目', () =>
-              run('选择目录', async () => {
-                const root = await api.chooseDirectory();
-                const latest = settingsRef.current;
-                if (!root || !latest) return;
-                if (latest.projects.some((p) => p.root === root)) {
-                  inform('这个目录已经在项目列表中。');
-                  return;
-                }
-                if (latest.projects.length >= 100)
-                  throw new Error('最多保留 100 个项目，请先移除不用的项目。');
-                update({
-                  ...latest,
-                  hiddenProjectRoots: latest.hiddenProjectRoots.filter((p) => p !== root),
-                  projects: appendProject(latest.projects, {
-                    key: `project-${latest.projects.length + 1}`,
-                    name: root.split('/').pop() || '项目',
-                    root,
+      <>
+        <section className="panel workspaces-panel">
+          <div className="section-heading split">
+            <div>
+              <span className="eyebrow">LOCAL WORKSPACES</span>
+              <h2>选择可以连接的项目</h2>
+              <p>每个项目单独授权；远程创建的项目沿用本机预设权限。</p>
+            </div>
+            <div className="action-row">
+              {button(
+                <>
+                  <Icon name="refresh" />
+                  {projectStatus.loading ? '刷新中…' : '刷新项目'}
+                </>,
+                () => refreshProjects(true),
+                false,
+                projectStatus.loading,
+              )}
+              {button(
+                <>
+                  <Icon name="plus" />
+                  添加项目
+                </>,
+                () =>
+                  run('选择目录', async () => {
+                    const root = await api.chooseDirectory();
+                    const latest = settingsRef.current;
+                    if (!root || !latest) return;
+                    if (latest.projects.some((p) => p.root === root)) {
+                      inform('这个目录已经在项目列表中。');
+                      return;
+                    }
+                    if (latest.projects.length >= 100)
+                      throw new Error('最多保留 100 个项目，请先移除不用的项目。');
+                    update({
+                      ...latest,
+                      hiddenProjectRoots: latest.hiddenProjectRoots.filter((p) => p !== root),
+                      projects: appendProject(latest.projects, {
+                        key: `project-${latest.projects.length + 1}`,
+                        name: root.split('/').pop() || '项目',
+                        root,
+                      }),
+                    });
                   }),
-                });
-              }),
-            )}
+              )}
+            </div>
           </div>
-        </div>
-        <div className="remote-project-settings">
+          <p className="helper">
+            自动读取本机 Codex 和远程创建的项目；回到 App 或每隔 30 秒刷新。
+            本机添加的项目需授权并应用；远程项目创建成功后即可按预设权限使用。
+          </p>
+          {projectStatus.text && (
+            <p className={`project-feedback ${projectStatus.error ? 'error' : ''}`}>
+              {projectStatus.text}
+            </p>
+          )}
+          {settings.projects.length === 0 ? (
+            <div className="empty">
+              <Icon name="projects" />
+              <h3>尚未添加本地项目</h3>
+              <p>普通聊天无需选择目录；需要处理文件时，再添加项目并授权。</p>
+            </div>
+          ) : (
+            <div className="project-list">
+              {settings.projects.map((project, index) => (
+                <article className="project-row" key={index}>
+                  <div className="project-index" aria-hidden="true">
+                    <Icon name="projects" />
+                  </div>
+                  <div className="project-body">
+                    <div className="form-grid">
+                      <label className="field">
+                        项目名称
+                        <TextInput
+                          placeholder="例如：我的项目"
+                          value={project.name}
+                          onChange={(e) => changeProject(index, 'name', e.target.value)}
+                        />
+                      </label>
+                      <label className="field">
+                        项目标识
+                        <TextInput
+                          spellCheck={false}
+                          placeholder="例如：my-project"
+                          value={project.key}
+                          onChange={(e) => changeProject(index, 'key', e.target.value)}
+                        />
+                      </label>
+                    </div>
+                    <p className="path" title={project.root}>
+                      {project.root}
+                    </p>
+                    {unavailableProjectRoots.includes(project.root) && (
+                      <div
+                        className={`project-availability ${canExecuteProject(project) ? 'error' : ''}`}
+                        role="status"
+                      >
+                        <strong>目录不可用</strong>
+                        <span>
+                          {canExecuteProject(project)
+                            ? '该项目已授权。请恢复目录，或关闭远程执行后应用配置，再启动连接。'
+                            : '已禁止远程执行，不影响连接启动。挂载磁盘或恢复目录后刷新即可。'}
+                        </span>
+                      </div>
+                    )}
+                    <div className="project-footer">
+                      <SelectField
+                        label="远程任务权限"
+                        value={
+                          project.remotePermissions?.mode ??
+                          (project.remoteWrite ? 'legacy' : 'disabled')
+                        }
+                        onChange={(mode) =>
+                          changePermissions(index, {
+                            ...projectPermissions(project),
+                            mode: mode as RemotePermissions['mode'],
+                          })
+                        }
+                        options={
+                          project.remoteWrite && !project.remotePermissions
+                            ? [
+                                {
+                                  value: 'legacy',
+                                  label: '旧版：允许执行，按需审批',
+                                  disabled: true,
+                                },
+                                ...permissionOptions,
+                              ]
+                            : permissionOptions
+                        }
+                      />
+                      <label className="toggle-label">
+                        <input
+                          type="checkbox"
+                          disabled={!project.remotePermissions || !canExecuteProject(project)}
+                          checked={projectPermissions(project).networkAccess}
+                          onChange={(e) =>
+                            changePermissions(index, {
+                              ...projectPermissions(project),
+                              networkAccess: e.target.checked,
+                            })
+                          }
+                        />
+                        <span className="toggle" />
+                        <span>允许任务联网</span>
+                      </label>
+                      <button
+                        className="text-button danger"
+                        onClick={() => {
+                          if (
+                            settings.hiddenProjectRoots.length >= 500 &&
+                            !settings.hiddenProjectRoots.includes(project.root)
+                          ) {
+                            setNotice({
+                              error: true,
+                              text: '已达到移除记录上限，暂时无法移除更多项目。',
+                            });
+                            return;
+                          }
+                          update({
+                            ...settings,
+                            hiddenProjectRoots: [
+                              ...new Set([...settings.hiddenProjectRoots, project.root]),
+                            ],
+                            projects: settings.projects.filter((_, i) => i !== index),
+                          });
+                        }}
+                      >
+                        移除
+                      </button>
+                    </div>
+                    {!project.remotePermissions && project.remoteWrite && (
+                      <p className="helper">
+                        保留旧版审批行为；选择新的权限后应用，才会启用严格限制。
+                      </p>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+        <section className="panel conversation-settings">
           <div className="section-heading">
             <span className="eyebrow">CONVERSATIONS</span>
             <h2>无项目对话</h2>
@@ -797,127 +927,8 @@ function App() {
           <p className="helper">
             设置自动缓存，停止连接后应用才生效。关闭后保留历史，拒绝新建和续聊。
           </p>
-        </div>
-        <p className="helper">
-          自动读取本机 Codex 和远程创建的项目；回到 App 或每隔 30 秒刷新。
-          本机添加的项目需授权并应用；远程项目创建成功后即可按预设权限使用。
-        </p>
-        {projectStatus.text && (
-          <p className={`project-feedback ${projectStatus.error ? 'error' : ''}`}>
-            {projectStatus.text}
-          </p>
-        )}
-        {settings.projects.length === 0 ? (
-          <div className="empty">
-            <Icon name="projects" />
-            <h3>尚未添加本地项目</h3>
-            <p>普通聊天无需选择目录；需要处理文件时，再添加项目并授权。</p>
-          </div>
-        ) : (
-          <div className="project-list">
-            {settings.projects.map((project, index) => (
-              <article className="project-row" key={index}>
-                <div className="project-index">{String(index + 1).padStart(2, '0')}</div>
-                <div className="project-body">
-                  <div className="form-grid">
-                    <label className="field">
-                      项目名称
-                      <TextInput
-                        placeholder="例如：我的项目"
-                        value={project.name}
-                        onChange={(e) => changeProject(index, 'name', e.target.value)}
-                      />
-                    </label>
-                    <label className="field">
-                      项目标识
-                      <TextInput
-                        spellCheck={false}
-                        placeholder="例如：my-project"
-                        value={project.key}
-                        onChange={(e) => changeProject(index, 'key', e.target.value)}
-                      />
-                    </label>
-                  </div>
-                  <p className="path" title={project.root}>
-                    {project.root}
-                  </p>
-                  <div className="project-footer">
-                    <SelectField
-                      label="远程任务权限"
-                      value={
-                        project.remotePermissions?.mode ??
-                        (project.remoteWrite ? 'legacy' : 'disabled')
-                      }
-                      onChange={(mode) =>
-                        changePermissions(index, {
-                          ...projectPermissions(project),
-                          mode: mode as RemotePermissions['mode'],
-                        })
-                      }
-                      options={
-                        project.remoteWrite && !project.remotePermissions
-                          ? [
-                              {
-                                value: 'legacy',
-                                label: '旧版：允许执行，按需审批',
-                                disabled: true,
-                              },
-                              ...permissionOptions,
-                            ]
-                          : permissionOptions
-                      }
-                    />
-                    <label className="toggle-label">
-                      <input
-                        type="checkbox"
-                        disabled={!project.remotePermissions || !canExecuteProject(project)}
-                        checked={projectPermissions(project).networkAccess}
-                        onChange={(e) =>
-                          changePermissions(index, {
-                            ...projectPermissions(project),
-                            networkAccess: e.target.checked,
-                          })
-                        }
-                      />
-                      <span className="toggle" />
-                      <span>允许任务联网</span>
-                    </label>
-                    <button
-                      className="text-button danger"
-                      onClick={() => {
-                        if (
-                          settings.hiddenProjectRoots.length >= 500 &&
-                          !settings.hiddenProjectRoots.includes(project.root)
-                        ) {
-                          setNotice({
-                            error: true,
-                            text: '已达到移除记录上限，暂时无法移除更多项目。',
-                          });
-                          return;
-                        }
-                        update({
-                          ...settings,
-                          hiddenProjectRoots: [
-                            ...new Set([...settings.hiddenProjectRoots, project.root]),
-                          ],
-                          projects: settings.projects.filter((_, i) => i !== index),
-                        });
-                      }}
-                    >
-                      移除
-                    </button>
-                  </div>
-                  {!project.remotePermissions && project.remoteWrite && (
-                    <p className="helper">
-                      保留旧版审批行为；选择新的权限后应用，才会启用严格限制。
-                    </p>
-                  )}
-                </div>
-              </article>
-            ))}
-          </div>
-        )}
-        <div className="remote-creation">
+        </section>
+        <section className="panel remote-creation">
           <div className="section-heading">
             <span className="eyebrow">REMOTE PROJECTS</span>
             <h2>远程新建项目</h2>
@@ -1013,24 +1024,31 @@ function App() {
             停止服务后应用设置。仅在指定目录下创建空文件夹，不覆盖已有目录。
             默认权限只作用于之后创建的项目；已有项目请在上方单独修改。关闭此开关不会删除已有项目。
           </p>
-        </div>
-        <SelectField
-          label="最多同时执行"
-          className="concurrency-field"
-          value={String(settings.maxConcurrentTasks)}
-          onChange={(value) => update({ ...settings, maxConcurrentTasks: Number(value) })}
-          options={Array.from({ length: 8 }, (_, i) => ({
-            value: String(i + 1),
-            label: `${i + 1} 个任务`,
-          }))}
-        />
-        <div className="inline-note">
-          仅在本机修改，停止服务后应用。等待审批、输入和状态待核对的任务仍占名额；同一会话或
-          checkout 串行，独立目录可并行。
-          新权限限制不可通过飞书审批扩大。只读分析禁止文件写入；联网开关控制命令网络与网页搜索，不影响模型连接。文件读取范围由
-          Codex 沙箱决定。
-        </div>
-      </section>
+        </section>
+        <section className="panel">
+          <div className="section-heading">
+            <span className="eyebrow">EXECUTION</span>
+            <h2>执行与并发</h2>
+            <p>为这台 Mac 分配合适的任务容量。</p>
+          </div>
+          <SelectField
+            label="最多同时执行"
+            className="concurrency-field"
+            value={String(settings.maxConcurrentTasks)}
+            onChange={(value) => update({ ...settings, maxConcurrentTasks: Number(value) })}
+            options={Array.from({ length: 8 }, (_, i) => ({
+              value: String(i + 1),
+              label: `${i + 1} 个任务`,
+            }))}
+          />
+          <div className="inline-note">
+            仅在本机修改，停止服务后应用。等待审批、输入和状态待核对的任务仍占名额；同一会话或
+            checkout 串行，独立目录可并行。
+            新权限限制不可通过飞书审批扩大。只读分析禁止文件写入；联网开关控制命令网络与网页搜索，不影响模型连接。文件读取范围由
+            Codex 沙箱决定。
+          </div>
+        </section>
+      </>
     );
   }
   function preferences() {
@@ -1108,48 +1126,90 @@ function App() {
     if (!snapshot || !settings) return null;
     const { status } = snapshot;
     const applied = snapshot.activeSettings ?? settings;
+    const executable = applied.projects.filter(canExecuteProject).length;
     return (
       <>
-        <section className="hero">
+        <div className="page-title overview-title split">
           <div>
-            <span className="eyebrow">YOUR LOCAL CONNECTION</span>
-            <h1>
-              让连接，
-              <br />
-              <em>保持简单。</em>
-            </h1>
-            <p>从飞书发起，让这台 Mac 上的 Codex 执行。</p>
+            <span className="eyebrow">OVERVIEW</span>
+            <h1>你的本地工作台</h1>
+            <p>连接飞书与 Codex，工作始终在这台 Mac 上进行。</p>
+          </div>
+          <span className="device-label">
+            <Icon name="laptop" /> macOS
+          </span>
+        </div>
+        <section className={`connection-panel ${status.phase === 'ready' ? 'online' : ''}`}>
+          <div className="connection-copy">
+            <span className="connection-label">
+              <i className="dot" /> {phaseLabels[status.phase]}
+            </span>
+            <h2>
+              {status.phase === 'ready'
+                ? '连接就绪，随时开始。'
+                : status.phase === 'stopped'
+                  ? '让工作，从一次连接开始。'
+                  : phaseLabels[status.phase]}
+            </h2>
+            <p>
+              {status.phase === 'ready'
+                ? '在飞书发送消息，交给本机 Codex 处理。'
+                : '启动后，飞书消息与任务状态将在这里同步。'}
+            </p>
             <div className="action-row">
               {active
                 ? button(
-                    '停止连接',
+                    <>
+                      <Icon name="stop" />
+                      停止连接
+                    </>,
                     () =>
                       run('停止服务', async () => {
                         const value = await api.stop();
                         setSnapshot((s) => (s ? { ...s, status: value } : s));
                       }),
-                    false,
                   )
                 : startButton()}
             </div>
-            {!active && connectionHint()}
           </div>
-          <div className="connection-art" aria-hidden="true">
-            <div className={`orbit ${status.phase === 'ready' ? 'online' : ''}`}>
-              <div className="orbit-core">
-                C<span>CONNECTOR</span>
+          <div className="connection-map" aria-hidden="true">
+            <div className={`map-node ${status.feishuConnected ? 'online' : ''}`}>
+              <div className="node-icon">
+                <Icon name="feishu" />
               </div>
-              <span className="satellite top">飞书</span>
-              <span className="satellite bottom">Codex</span>
+              <span>飞书</span>
+              <small>消息入口</small>
             </div>
-            <small>
-              {status.phase === 'ready' ? 'CONNECTED ON YOUR MAC' : 'READY WHEN YOU ARE'}
-            </small>
+            <div className={`map-line ${status.feishuConnected ? 'online' : ''}`}>
+              <i />
+            </div>
+            <div className="map-node connector-node">
+              <div className="node-icon">
+                <ConnectorMark />
+              </div>
+              <span>Connector</span>
+              <small>本地网关</small>
+            </div>
+            <div className={`map-line ${status.rpcReady ? 'online' : ''}`}>
+              <i />
+            </div>
+            <div className={`map-node ${status.rpcReady ? 'online' : ''}`}>
+              <div className="node-icon">
+                <Icon name="terminal" />
+              </div>
+              <span>Codex</span>
+              <small>本机执行</small>
+            </div>
           </div>
         </section>
+        {!active && connectionHint()}
+        {status.error && <div className="inline-note error">{status.error}</div>}
         <div className="status-grid">
           <section className="status-cell">
-            <span className="eyebrow">FEISHU</span>
+            <div className="metric-heading">
+              <span>飞书连接</span>
+              <Icon name="feishu" />
+            </div>
             <h3>
               <i className={status.feishuConnected ? 'dot green' : 'dot'} />
               {status.feishuConnected ? '长连接在线' : '尚未连接'}
@@ -1157,7 +1217,10 @@ function App() {
             <p>接收消息与卡片操作</p>
           </section>
           <section className="status-cell">
-            <span className="eyebrow">CODEX</span>
+            <div className="metric-heading">
+              <span>Codex 后端</span>
+              <Icon name="terminal" />
+            </div>
             <h3>
               <i className={status.rpcReady ? 'dot green' : 'dot'} />
               {status.rpcReady ? '执行后端就绪' : '尚未就绪'}
@@ -1165,10 +1228,13 @@ function App() {
             <p>独立管理飞书任务</p>
           </section>
           <section className="status-cell">
-            <span className="eyebrow">TASKS</span>
-            <h3>
+            <div className="metric-heading">
+              <span>未完成任务</span>
+              <Icon name="activity" />
+            </div>
+            <h3 className="task-metric">
               {status.pending}
-              <span className="metric-unit"> 个未完成</span>
+              <span className="metric-unit">个</span>
             </h3>
             <p>
               {status.tasks.length
@@ -1179,31 +1245,107 @@ function App() {
             </p>
           </section>
         </div>
-        {status.error && <div className="inline-note error">{status.error}</div>}
-        <section className="panel compact">
-          <div className="split">
-            <div>
-              <h3>本地项目</h3>
-              <p>
-                {applied.projects.length} 个项目 ·{' '}
-                {applied.projects.filter(canExecuteProject).length} 个允许远程执行 · 最多同时执行{' '}
-                {applied.maxConcurrentTasks} 个任务
-              </p>
+        <div className="overview-bottom">
+          <section className="panel workspace-summary">
+            <div className="section-heading split">
+              <div>
+                <span className="eyebrow">WORKSPACES</span>
+                <h2>
+                  本地项目 <span className="count-badge">{applied.projects.length}</span>
+                </h2>
+              </div>
+              <button className="text-button" onClick={() => setPage('projects')}>
+                管理项目 <Icon name="arrow" />
+              </button>
             </div>
-            <button className="text-button" onClick={() => setPage('projects')}>
-              管理项目 <Icon name="arrow" />
-            </button>
-          </div>
-        </section>
+            {applied.projects.length ? (
+              <div className="workspace-preview">
+                {applied.projects.slice(0, 3).map((project) => (
+                  <div className="workspace-preview-row" key={project.key}>
+                    <span className="workspace-icon">
+                      <Icon name="projects" />
+                    </span>
+                    <div>
+                      <strong>{project.name || project.key}</strong>
+                      <span className="path" title={project.root}>
+                        {project.root}
+                      </span>
+                    </div>
+                    <span
+                      className={`permission-tag ${canExecuteProject(project) ? 'allowed' : ''}`}
+                    >
+                      {!canExecuteProject(project)
+                        ? '未授权'
+                        : projectPermissions(project).mode === 'read-only'
+                          ? '只读'
+                          : '可执行'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="workspace-empty">
+                <Icon name="projects" />
+                <p>还没有本地项目。需要处理文件时，再添加目录并授权。</p>
+                <button className="text-button" onClick={() => setPage('projects')}>
+                  添加项目 <Icon name="arrow" />
+                </button>
+              </div>
+            )}
+            <p className="summary-footnote">
+              {executable} 个项目已授权
+              {applied.projects.length > 3
+                ? ` · 另有 ${applied.projects.length - 3} 个项目可在列表中查看`
+                : ' · 权限仅在本机管理'}
+            </p>
+          </section>
+          <section className="panel local-summary">
+            <span className="local-summary-icon">
+              <Icon name="shield" />
+            </span>
+            <h3>本地运行，权限由你掌控</h3>
+            <p>项目权限与连接配置在这台 Mac 上管理，飞书端无法修改。</p>
+            <div className="local-summary-detail">
+              <span>无项目对话</span>
+              <strong>
+                {applied.projectless?.enabled === false
+                  ? '已关闭'
+                  : status.projectless?.ready
+                    ? '已就绪'
+                    : status.projectless?.error
+                      ? '暂不可用'
+                      : '已开启 · 启动时验证'}
+              </strong>
+            </div>
+            <div className="local-summary-detail">
+              <span>同时执行上限</span>
+              <strong>{applied.maxConcurrentTasks} 个任务</strong>
+            </div>
+            <div className="local-summary-detail">
+              <span>退出 App</span>
+              <strong>停止任务与连接</strong>
+            </div>
+          </section>
+        </div>
       </>
     );
   }
   function setup() {
     return (
       <>
+        <div className="page-title">
+          <span className="eyebrow">GETTING STARTED</span>
+          <h1>建立你的连接</h1>
+          <p>四个步骤，让飞书与本机 Codex 协同工作。</p>
+        </div>
         <div className="wizard-steps">
           {['Codex', '飞书连接', '本地项目', '检查与启动'].map((label, i) => (
-            <button key={label} className={step === i ? 'selected' : ''} onClick={() => setStep(i)}>
+            <button
+              key={label}
+              className={step === i ? 'selected' : ''}
+              aria-current={step === i ? 'step' : undefined}
+              onClick={() => setStep(i)}
+            >
               <span>{i + 1}</span>
               {label}
             </button>
@@ -1286,18 +1428,21 @@ function App() {
       <aside className="sidebar">
         <div className="brand">
           <div className="brand-mark">
-            C<span>↗</span>
+            <ConnectorMark />
           </div>
           <div>
             Codex<span>Connector</span>
           </div>
         </div>
-        <div className="sidebar-caption">本地控制台</div>
-        <nav>
+        <div className="sidebar-caption">
+          WORKSPACE <span>本地控制台</span>
+        </div>
+        <nav aria-label="主导航">
           {(['overview', 'feishu', 'projects', 'preferences', 'logs'] as Page[]).map((item) => (
             <button
               key={item}
               className={page === item ? 'nav-item selected' : 'nav-item'}
+              aria-current={page === item ? 'page' : undefined}
               onClick={() => {
                 setPage(item);
                 if (item === 'logs')
@@ -1306,11 +1451,13 @@ function App() {
             >
               <Icon name={item} />
               {pageLabels[item]}
+              {page === item && <span className="nav-indicator" />}
             </button>
           ))}
         </nav>
         <button
           className={page === 'setup' ? 'nav-item setup selected' : 'nav-item setup'}
+          aria-current={page === 'setup' ? 'page' : undefined}
           onClick={() => setPage('setup')}
         >
           <Icon name="setup" />
@@ -1318,14 +1465,17 @@ function App() {
         </button>
         <div className="sidebar-bottom">
           <span className="local-badge">
-            <i className="dot green" /> 数据保存在本机
+            <Icon name="shield" /> 数据保存在本机
           </span>
           <small>macOS · 内部测试版 0.1</small>
         </div>
       </aside>
       <main>
         <header className="topbar">
-          <span>{pageLabels[page]}</span>
+          <span className="breadcrumb">
+            控制台 <Icon name="chevron" />
+            <strong>{pageLabels[page]}</strong>
+          </span>
           <div>
             {snapshot && (
               <span
@@ -1346,14 +1496,14 @@ function App() {
               </span>
             )}
             <span
-              className={`status-pill ${snapshot?.status.phase === 'ready' ? 'connected' : ''}`}
+              className={`status-pill phase-${snapshot?.status.phase ?? 'loading'} ${snapshot?.status.phase === 'ready' ? 'connected' : ''}`}
             >
               <i className="dot" />
               {snapshot ? phaseLabels[snapshot.status.phase] : '正在加载'}
             </span>
           </div>
         </header>
-        <div className="content">
+        <div className="content" ref={contentRef}>
           {settings && snapshot ? (
             <>
               {page === 'overview' && overview()}
@@ -1364,6 +1514,7 @@ function App() {
                   <div className="page-title">
                     <span className="eyebrow">CONNECTION SETTINGS</span>
                     <h1>飞书连接</h1>
+                    <p>管理机器人身份与本机 Codex，建立可靠的消息通道。</p>
                   </div>
                   {feishuForm()}
                   {codexForm()}
@@ -1374,22 +1525,10 @@ function App() {
                   <div className="page-title">
                     <span className="eyebrow">YOUR WORKSPACES</span>
                     <h1>本地项目</h1>
+                    <p>选择工作目录，设定每个项目的执行边界。</p>
                   </div>
                   {projectsForm()}
                 </>
-              )}
-              {(page === 'projects' || page === 'feishu') && (
-                <div className="save-bar">
-                  <span>
-                    {active
-                      ? '配置自动缓存到本机；停止服务后应用。'
-                      : '配置自动缓存到本机，应用后生效。'}
-                  </span>
-                  <div>
-                    {button('立即保存', () => save(false))}
-                    {button('应用配置', () => save(true), true, !stopped)}
-                  </div>
-                </div>
               )}
               {page === 'logs' && (
                 <>
@@ -1431,6 +1570,17 @@ function App() {
             </div>
           )}
         </div>
+        {settings && snapshot && (page === 'projects' || page === 'feishu') && (
+          <div className="save-bar">
+            <span>
+              {active ? '配置自动缓存到本机；停止服务后应用。' : '配置自动缓存到本机，应用后生效。'}
+            </span>
+            <div>
+              {button('立即保存', () => save(false))}
+              {button('应用配置', () => save(true), true, !stopped)}
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

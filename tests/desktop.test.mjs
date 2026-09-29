@@ -8,6 +8,7 @@ import { gatewayConfigSchema } from '../src/config/schema.ts';
 import { gatewayCredentials } from '../src/feishu/credentials.ts';
 import { uiRequestSchema } from '../src/desktop/contracts.ts';
 import { validateSettings } from '../src/desktop/runtime.ts';
+import { executableProject } from '../src/projects/store.ts';
 import { openGatewayDatabase } from '../src/persistence/database.ts';
 import { TaskStore } from '../src/tasks/store.ts';
 import { TaskWorker } from '../src/tasks/worker.ts';
@@ -198,6 +199,81 @@ describe('desktop configuration and credential boundary', () => {
     expect(uiRequestSchema.safeParse({ method: 'openData', path: '/elsewhere' }).success).toBe(
       false,
     );
+  });
+});
+describe('desktop project directory availability', () => {
+  it.each([
+    { remotePermissions: { mode: 'disabled', networkAccess: false } },
+    { remoteWrite: false },
+  ])(
+    'keeps unavailable disabled projects without blocking configuration or granting access: %j',
+    (policy) => {
+      const missing = {
+        key: 'offline',
+        name: 'Offline volume',
+        root: join(dir, 'missing'),
+        ...policy,
+      };
+      const saved = { ...settings(), projects: [...settings().projects, missing] };
+      const before = JSON.parse(JSON.stringify(saved));
+      const config = validateSettings(saved, { ...identity, appSecret: secret });
+      expect(config.projects).toContainEqual(missing);
+      expect(saved).toEqual(before);
+      expect(existsSync(missing.root)).toBe(false);
+      expect(() => executableProject(config.projects, missing.key)).toThrow('未开放远程执行');
+    },
+  );
+  it.each([
+    { remotePermissions: { mode: 'read-only', networkAccess: false } },
+    { remotePermissions: { mode: 'workspace-write', networkAccess: false } },
+    { remoteWrite: true },
+  ])('identifies unavailable authorized projects and refuses execution: %j', (policy) => {
+    const missing = {
+      key: 'offline',
+      name: 'Offline volume',
+      root: join(dir, 'missing'),
+      ...policy,
+    };
+    expect(() =>
+      validateSettings({ ...settings(), projects: [missing] }, { ...identity, appSecret: secret }),
+    ).toThrow(`项目「Offline volume」目录不存在或不可访问：${missing.root}`);
+  });
+  it('still rejects aliases shared by disabled and authorized projects and invalid disabled paths', () => {
+    const alias = join(dir, 'alias');
+    symlinkSync(dir, alias);
+    expect(() =>
+      validateSettings(
+        {
+          ...settings(),
+          projects: [
+            ...settings().projects,
+            {
+              key: 'disabled',
+              name: 'Alias',
+              root: alias,
+              remoteWrite: false,
+            },
+          ],
+        },
+        { ...identity, appSecret: secret },
+      ),
+    ).toThrow('同一目录');
+    expect(() =>
+      validateSettings(
+        {
+          ...settings(),
+          projects: [
+            {
+              key: 'disabled',
+              name: 'Relative',
+              root: 'relative/missing',
+              remoteWrite: false,
+            },
+          ],
+        },
+        { ...identity, appSecret: secret },
+      ),
+    ).toThrow('必须是绝对路径');
   });
 });
 describe('desktop stop preserves task ownership and uncertainty', () => {

@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import Database from 'better-sqlite3';
 import { gatewayConfigSchema } from '../src/config/schema.ts';
 import { afterEach, beforeEach, expect, it } from 'vitest';
-import { discoverProjects } from '../src/desktop/projects.ts';
+import { discoverProfileProjects, discoverProjects } from '../src/desktop/projects.ts';
 import { appendProject, mergeDiscoveredProjects } from '../src/desktop/project-selection.ts';
 import { defaultSettings, DesktopVault } from '../src/desktop/vault.ts';
 
@@ -46,7 +46,12 @@ function globalState(state) {
 }
 
 it('returns an empty catalog without creating a Codex database or starting services', () => {
-  expect(discoverProjects([], home)).toEqual({ projects: [], canonicalRoots: {}, unavailable: 0 });
+  expect(discoverProjects([], home)).toEqual({
+    projects: [],
+    canonicalRoots: {},
+    unavailableRoots: [],
+    unavailable: 0,
+  });
   expect(readdirSync(home)).toEqual([]);
 });
 it('reads ordered project roots without changing the database, deduplicates aliases and skips missing paths', () => {
@@ -64,6 +69,7 @@ it('reads ordered project roots without changing the database, deduplicates alia
   expect(result.projects.map((p) => p.root)).toEqual([first, second]);
   expect(result.projects.map((p) => p.name)).toEqual(['Edited in Codex', 'Edited in Codex']);
   expect(result.canonicalRoots).toEqual({ [alias]: first });
+  expect(result.unavailableRoots).toEqual([join(home, 'missing')]);
   expect(result.unavailable).toBe(1);
   expect(result.projects.map((p) => p.key)).toEqual(
     discoverProjects([], home).projects.map((p) => p.key),
@@ -101,6 +107,40 @@ it('handles an unavailable registry without attempting migrations or returning p
   const before = readFileSync(db);
   expect(() => discoverProjects([], home)).toThrow('暂时无法读取 Codex 项目列表');
   expect(readFileSync(db)).toEqual(before);
+});
+it('reports missing configured directories independently of a failed Codex catalog read', () => {
+  const available = directory('available');
+  const missing = join(home, 'offline-volume');
+  const db = registry([]);
+  const connection = new Database(db);
+  connection.exec('DROP TABLE project_roots');
+  connection.close();
+  const result = discoverProfileProjects(
+    {
+      knownRoots: [available, missing],
+      dataDir: join(home, 'data'),
+      feishu: defaultSettings().feishu,
+    },
+    home,
+  );
+  expect(result.canonicalRoots).toEqual({ [available]: available });
+  expect(result.unavailableRoots).toEqual([missing]);
+  expect(result.warning).toContain('Codex 项目暂不可读');
+});
+it('clears the unavailable marker after a directory returns without changing its saved identity', () => {
+  const missing = join(home, 'offline-volume');
+  const saved = {
+    ...defaultSettings(),
+    projects: [{ key: 'saved-id', name: 'Saved name', root: missing, remoteWrite: false }],
+  };
+  const discovery = discoverProjects([missing], home);
+  expect(discovery.unavailableRoots).toEqual([missing]);
+  expect(mergeDiscoveredProjects(saved, discovery)).toBe(saved);
+  mkdirSync(missing);
+  const restored = discoverProjects([missing], home);
+  expect(restored.unavailableRoots).toEqual([]);
+  expect(restored.canonicalRoots[missing]).toBe(missing);
+  expect(mergeDiscoveredProjects(saved, restored)).toBe(saved);
 });
 it('bounds and validates legacy catalogs', () => {
   globalState({ 'electron-saved-workspace-roots': ['relative'] });

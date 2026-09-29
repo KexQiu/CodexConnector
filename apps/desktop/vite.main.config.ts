@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { builtinModules } from 'node:module';
 export default defineConfig({
+  publicDir: false,
   build: {
     outDir: 'dist',
     emptyOutDir: false,

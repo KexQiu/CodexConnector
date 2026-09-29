@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Icon } from './icons.js';
 
 export interface FeedbackNotice {
   text: string;
@@ -30,11 +31,11 @@ function NoticeCard({ notice, onDismiss }: { notice: FeedbackNotice; onDismiss: 
       }}
     >
       <span className="feedback-icon" aria-hidden="true">
-        {notice.error ? '!' : '✓'}
+        <Icon name={notice.error ? 'alert' : 'success'} />
       </span>
       <span className="feedback-message">{notice.text}</span>
       <button className="feedback-close" aria-label="关闭提示" onClick={onDismiss}>
-        ×
+        <Icon name="close" />
       </button>
     </div>
   );
@@ -58,7 +59,7 @@ export function FeedbackViewport({
       {cacheFailed && (
         <div className="feedback-card error" role="alert" aria-atomic="true">
           <span className="feedback-icon" aria-hidden="true">
-            !
+            <Icon name="alert" />
           </span>
           <span className="feedback-message">
             本地缓存保存失败。请检查 Keychain 授权和数据目录写入权限，再重试保存。

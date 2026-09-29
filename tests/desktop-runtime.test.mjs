@@ -96,6 +96,31 @@ it('does not start any child when legacy services are loaded', async () => {
   await expect(runtime.start(input)).rejects.toThrow('LaunchAgent');
   expect(fixture.run).not.toHaveBeenCalled();
 });
+it('starts with a disconnected disabled project while retaining its configuration', async () => {
+  const project = {
+    key: 'offline',
+    name: 'Disconnected volume',
+    root: join(root, 'unmounted'),
+    remotePermissions: { mode: 'disabled', networkAccess: false },
+  };
+  input.settings.projects = [project];
+  await runtime.start(input);
+  expect(fixture.events).toEqual(['app-server:start', 'gateway:start']);
+  expect(input.settings.projects).toEqual([project]);
+});
+it('rejects an unavailable authorized project before the doctor or services are started', async () => {
+  input.settings.projects = [
+    {
+      key: 'offline',
+      name: 'Disconnected volume',
+      root: join(root, 'unmounted'),
+      remotePermissions: { mode: 'read-only', networkAccess: false },
+    },
+  ];
+  await expect(runtime.start(input)).rejects.toThrow('Disconnected volume');
+  expect(fixture.doctor).not.toHaveBeenCalled();
+  expect(fixture.run).not.toHaveBeenCalled();
+});
 it('cancels startup on parent disconnect even while version inspection is pending', async () => {
   let release;
   fixture.doctor.mockImplementation(

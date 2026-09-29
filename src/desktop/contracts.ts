@@ -74,6 +74,7 @@ export type DiscoveredProject = {
 export type ProjectDiscovery = {
   projects: DiscoveredProject[];
   canonicalRoots: Record<string, string>;
+  unavailableRoots?: string[];
   unavailable: number;
   warning?: string;
 };

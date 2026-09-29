@@ -21,7 +21,7 @@ export function discoverProfileProjects(
   } catch {
     discovery = {
       projects: [],
-      canonicalRoots: {},
+      ...inspectKnownRoots(input.knownRoots),
       unavailable: 0,
       warning: 'Codex 项目暂不可读，已保留当前列表并读取远程项目。',
     };
@@ -125,14 +125,7 @@ export function discoverProjects(
   knownRoots: string[],
   home = process.env.CODEX_HOME ?? join(homedir(), '.codex'),
 ): ProjectDiscovery {
-  const canonicalRoots: Record<string, string> = {};
-  for (const root of knownRoots) {
-    try {
-      canonicalRoots[root] = canonicalDirectory(root);
-    } catch {
-      /* Preserve unavailable configured projects. */
-    }
-  }
+  const known = inspectKnownRoots(knownRoots);
   let rows: { name: string; root: string }[];
   try {
     rows = projectRows(home);
@@ -164,5 +157,18 @@ export function discoverProjects(
       root,
     });
   }
-  return { projects, canonicalRoots, unavailable };
+  return { projects, ...known, unavailable };
+}
+
+function inspectKnownRoots(knownRoots: string[]) {
+  const canonicalRoots: Record<string, string> = {};
+  const unavailableRoots: string[] = [];
+  for (const root of knownRoots) {
+    try {
+      canonicalRoots[root] = canonicalDirectory(root);
+    } catch {
+      unavailableRoots.push(root);
+    }
+  }
+  return { canonicalRoots, unavailableRoots };
 }

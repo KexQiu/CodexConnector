@@ -1,4 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { Icon } from './icons.js';
 import type { CSSProperties, InputHTMLAttributes, KeyboardEvent } from 'react';
 
 export function TextInput({ className = '', ...props }: InputHTMLAttributes<HTMLInputElement>) {
@@ -171,9 +172,7 @@ export function SelectField({
         onClick={() => (expanded ? setOpen(false) : show())}
       >
         <span className="select-value">{selected?.label ?? '请选择'}</span>
-        <svg className="select-chevron" viewBox="0 0 16 16" aria-hidden="true">
-          <path d="m4 6 4 4 4-4" />
-        </svg>
+        <Icon name="chevronDown" className="select-chevron" />
       </button>
       {expanded && (
         <div
@@ -204,11 +203,7 @@ export function SelectField({
                   <span className="select-option-description">{option.description}</span>
                 )}
               </span>
-              {value === option.value && (
-                <svg viewBox="0 0 16 16" aria-hidden="true">
-                  <path d="m3 8 3 3 7-7" />
-                </svg>
-              )}
+              {value === option.value && <Icon name="check" />}
             </div>
           ))}
         </div>

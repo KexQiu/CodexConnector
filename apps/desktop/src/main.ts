@@ -225,6 +225,9 @@ else {
   app
     .whenReady()
     .then(async () => {
+      // Packaged apps use the ICNS in the bundle; use the same artwork in development.
+      if (!app.isPackaged && process.platform === 'darwin')
+        app.dock?.setIcon(join(__dirname, 'ui/app-icon.png'));
       vault = new DesktopVault(root, {
         encrypt(value) {
           if (!safeStorage.isEncryptionAvailable())
@@ -288,7 +291,7 @@ else {
         minWidth: 900,
         minHeight: 650,
         title: 'CodexConnector',
-        backgroundColor: '#f5f3ed',
+        backgroundColor: '#f4f6f8',
         titleBarStyle: 'hiddenInset',
         webPreferences: {
           preload: join(__dirname, 'preload.cjs'),

@@ -6,6 +6,7 @@ module.exports = {
     asar: true,
     electronZipDir: path.resolve(__dirname, '../../.artifacts/electron-download'),
     executableName: 'CodexConnector',
+    icon: path.resolve(__dirname, 'assets/app-icon.icns'),
     // Internal builds have no Developer ID. Re-sign modified Electron resources
     // and the bundled Node runtime so the bundle has a valid ad-hoc signature.
     osxSign: {

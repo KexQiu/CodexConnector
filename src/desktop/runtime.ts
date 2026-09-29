@@ -12,6 +12,7 @@ import {
   type FeishuCredentials,
 } from '../feishu/credentials.js';
 import { canonicalDirectory } from '../projects/store.js';
+import { canExecuteProject } from '../config/project-policy.js';
 import { validateCreationRoot } from '../projects/remote.js';
 import { privateDirectory, processAlive } from '../service/files.js';
 import { processGroupAlive } from '../service/child.js';
@@ -46,7 +47,17 @@ export function validateSettings(
   if (!isAbsolute(settings.codexBinary)) throw new Error('请选择 Codex 可执行文件的绝对路径');
   const roots = new Set<string>();
   for (const project of settings.projects) {
-    const root = canonicalDirectory(project.root);
+    let root: string;
+    try {
+      root = canonicalDirectory(project.root);
+    } catch {
+      // A disconnected volume may remain in the local catalog with execution
+      // disabled. Keep its identity and history without blocking other projects.
+      if (!canExecuteProject(project)) continue;
+      throw new Error(
+        `项目「${project.name || project.key}」目录不存在或不可访问：${project.root}。请恢复目录，或在“本地项目”中关闭该项目的远程执行后应用配置。`,
+      );
+    }
     if (roots.has(root)) throw new Error('同一目录不能重复添加为多个项目');
     roots.add(root);
   }
