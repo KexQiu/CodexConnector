@@ -139,7 +139,11 @@ if (isolatedRoot) {
     });
   writeFileSync(
     join(appOutput, 'package.json'),
-    JSON.stringify({ name: 'codexconnector-onboarding-test', version: '0.1.0', main: 'main.cjs' }),
+    JSON.stringify({
+      name: 'codexconnector-internal-test',
+      version: JSON.parse(readFileSync(join(root, 'apps/desktop/package.json'), 'utf8')).version,
+      main: 'main.cjs',
+    }),
   );
 } else {
   execFileSync('pnpm', ['--filter', '@codexconnector/desktop', 'build'], {

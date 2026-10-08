@@ -1,6 +1,7 @@
 packages:
   - .
   - apps/desktop
+  - apps/native
 minimumReleaseAgeExclude:
   - '@vitest/mocker@5.0.1'
   - '@vitest/spy@5.0.1'

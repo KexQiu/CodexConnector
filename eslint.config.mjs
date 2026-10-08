@@ -12,6 +12,9 @@ export default [
       'src/codex/generated/**',
       'apps/desktop/dist/**',
       'apps/desktop/out/**',
+      'apps/native/dist/**',
+      'apps/native/src-tauri/target/**',
+      'apps/native/src-tauri/gen/**',
     ],
   },
   {

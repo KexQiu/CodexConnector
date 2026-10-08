@@ -1,5 +1,9 @@
 const path = require('node:path');
+const buildRoot = process.env.CONNECTOR_DESKTOP_BUILD_ROOT
+  ? path.resolve(process.env.CONNECTOR_DESKTOP_BUILD_ROOT)
+  : null;
 module.exports = {
+  ...(buildRoot ? { outDir: path.join(buildRoot, 'out') } : {}),
   packagerConfig: {
     name: 'CodexConnector',
     appBundleId: 'io.codexconnector.desktop',
@@ -14,15 +18,22 @@ module.exports = {
       identityValidation: false,
       preAutoEntitlements: false,
       preEmbedProvisioningProfile: false,
-      optionsForFile: (file) => ({
+      optionsForFile: () => ({
         hardenedRuntime: true,
         timestamp: 'none',
-        entitlements: file.endsWith('/desktop-runtime/node')
-          ? ['com.apple.security.cs.allow-jit', 'com.apple.security.cs.disable-library-validation']
-          : ['com.apple.security.cs.allow-jit'],
+        // Ad-hoc signatures have no Team ID. Electron hosts and helpers must also
+        // be able to load the bundled ad-hoc frameworks, not just the Node child.
+        entitlements: [
+          'com.apple.security.cs.allow-jit',
+          'com.apple.security.cs.disable-library-validation',
+        ],
       }),
     },
-    extraResource: [path.resolve(__dirname, '../../.artifacts/desktop-runtime')],
+    extraResource: [
+      buildRoot
+        ? path.join(buildRoot, 'desktop-runtime')
+        : path.resolve(__dirname, '../../.artifacts/desktop-runtime'),
+    ],
     ignore: (file) => file !== '' && !/^\/(dist|package\.json)(\/|$)/.test(file),
     prune: false,
   },

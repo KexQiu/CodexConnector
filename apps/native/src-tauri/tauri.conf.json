@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CodexConnector Rust",
+  "version": "0.2.0-alpha.2",
+  "identifier": "com.codexconnector.native",
+  "build": {
+    "beforeDevCommand": "pnpm ui:dev",
+    "beforeBuildCommand": "pnpm ui:build",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "create": false,
+        "label": "main",
+        "title": "CodexConnector",
+        "width": 1120,
+        "height": 790,
+        "minWidth": 900,
+        "minHeight": 650,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "backgroundColor": "#f4f6f8"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; frame-src 'none'",
+      "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src ipc: http://ipc.localhost ws://127.0.0.1:1420 http://127.0.0.1:1420; object-src 'none'; base-uri 'none'; frame-src 'none'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app", "dmg"],
+    "icon": ["icons/app-icon.icns"],
+    "resources": { "../../../.artifacts/native-runtime/": "runtime/" },
+    "macOS": { "minimumSystemVersion": "13.0", "hardenedRuntime": true }
+  }
+}

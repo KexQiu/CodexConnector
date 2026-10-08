@@ -5,9 +5,9 @@ import {
   officialUrl,
 } from '../../../src/feishu/setup-contracts.js';
 import { app, BrowserWindow, clipboard, dialog, ipcMain, safeStorage, shell, Menu } from 'electron';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { resolveCodexBinary } from '../../../src/codex/binary.js';
 import { pathToFileURL } from 'node:url';
 import { Backend } from './backend.js';
@@ -29,13 +29,19 @@ const runtimeRoot = app.isPackaged
       process.env.CONNECTOR_DEV_RUNTIME_ROOT ??
         join(__dirname, '../../../.artifacts/desktop-runtime'),
     );
-const root = app.isPackaged
-  ? join(homedir(), 'Library/Application Support/CodexConnector')
-  : resolve(
-      process.env.CONNECTOR_DEV_DATA_ROOT ??
-        join(__dirname, '../../../.artifacts/desktop-user-data'),
-    );
+// The release check exercises the signed executable, preload and renderer with
+// an empty, disposable profile. It never opens the user's configured profile.
+const smokeTest = process.argv.includes('--connector-smoke-test');
+const root = smokeTest
+  ? mkdtempSync(join(tmpdir(), 'codexconnector-launch-'))
+  : app.isPackaged
+    ? join(homedir(), 'Library/Application Support/CodexConnector')
+    : resolve(
+        process.env.CONNECTOR_DEV_DATA_ROOT ??
+          join(__dirname, '../../../.artifacts/desktop-user-data'),
+      );
 app.setPath('userData', root);
+if (smokeTest) app.once('will-quit', () => rmSync(root, { recursive: true, force: true }));
 let window: BrowserWindow | null = null;
 let backend: Backend;
 let vault: DesktopVault;
@@ -376,6 +382,7 @@ else {
         ]),
       );
       window = new BrowserWindow({
+        show: !smokeTest,
         width: 1120,
         height: 790,
         minWidth: 900,
@@ -407,9 +414,45 @@ else {
           '运行环境缺失',
           '请重新安装完整 App，或在开发目录执行 pnpm desktop:build。',
         );
-      return window.loadFile(uiFile);
+      await window.loadFile(uiFile);
+      if (smokeTest) {
+        const result = (await window.webContents.executeJavaScript(`
+          (async () => {
+            const until = Date.now() + 10000;
+            while (!document.body.innerText.includes('准备清单') ||
+                   !document.body.innerText.includes(${JSON.stringify(app.getVersion())})) {
+              if (Date.now() > until) throw new Error('renderer_not_ready');
+              await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            const state = await window.desktop.load();
+            return { renderer: true, ipc: true, configured: state.configured,
+                     phase: state.status.phase, feishuConnected: state.status.feishuConnected };
+          })()
+        `)) as {
+          renderer: boolean;
+          ipc: boolean;
+          configured: boolean;
+          phase: string;
+          feishuConnected: boolean;
+        };
+        if (result.configured || result.phase !== 'stopped' || result.feishuConnected)
+          throw new Error('smoke_profile_not_isolated');
+        await backend.close();
+        quitApproved = true;
+        console.log(
+          'CONNECTOR_DESKTOP_SMOKE ' + JSON.stringify({ version: app.getVersion(), ...result }),
+        );
+        app.quit();
+      }
     })
     .catch((error) => {
+      if (smokeTest) {
+        console.error('CONNECTOR_DESKTOP_SMOKE_FAILED', error);
+        if (backend?.connected) backend.close().catch(() => {});
+        rmSync(root, { recursive: true, force: true });
+        app.exit(1);
+        return;
+      }
       dialog.showErrorBox('启动失败', error instanceof Error ? error.message : '无法打开 App');
       quitApproved = true;
       app.quit();

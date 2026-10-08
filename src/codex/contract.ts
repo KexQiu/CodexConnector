@@ -115,6 +115,25 @@ function reference(document: Json, ref: string): Json {
   return result;
 }
 function projected(value: Json, ref: string, candidate = false): Json {
+  // These strings are display/error metadata, accepted by our runtime parsers as
+  // open values. They never authorize execution or choose approval/sandbox policy.
+  // Preserve types and every other constraint; permission and task-state enums
+  // elsewhere remain exact. New object variants still require review.
+  const openMetadataString = (schema: Json): Json => {
+    const obj = object(schema);
+    if (
+      obj.type !== 'string' ||
+      !Array.isArray(obj.enum) ||
+      obj.enum.some((entry) => typeof entry !== 'string')
+    )
+      return schema;
+    return Object.fromEntries(Object.entries(obj).filter(([key]) => key !== 'enum'));
+  };
+  if (ref === '#/definitions/v2/PlanType') return openMetadataString(value);
+  if (ref === '#/definitions/v2/CodexErrorInfo') {
+    const obj = object(value);
+    return Array.isArray(obj.oneOf) ? { ...obj, oneOf: obj.oneOf.map(openMetadataString) } : value;
+  }
   const select = (value: Json, fields: string[]): Json => {
     const obj = object(value);
     if (!obj.properties) return value;

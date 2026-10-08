@@ -19,6 +19,7 @@ const read = (p) => JSON.parse(readFileSync(new URL(p, import.meta.url), 'utf8')
 const oldSchema = read('../schemas/codex/0.155.0-alpha.9.2/protocol.schema.json');
 const newSchema = read('../schemas/codex/0.158.0-alpha.2.1/protocol.schema.json');
 const stableSchema = read('../schemas/codex/0.155.1/protocol.schema.json');
+const currentSchema = read('../schemas/codex/0.159.2/protocol.schema.json');
 const profile = read('../src/codex/compatibility-profile.json');
 const clone = () => JSON.parse(JSON.stringify(newSchema));
 const check = (edit) => {
@@ -57,11 +58,12 @@ function fakeBinary(version, schema = newSchema, mode = 'valid') {
   return { binary, root };
 }
 describe('Codex wire compatibility contract', () => {
-  it('reproduces the checked-in profile and accepts all three captured releases', () => {
+  it('reproduces the checked-in profile and accepts all four captured releases', () => {
     expect(buildContract(oldSchema, '0.155.0-alpha.9.2')).toEqual(profile);
     expect(compareContract(profile, oldSchema)).toEqual([]);
     expect(compareContract(profile, newSchema)).toEqual([]);
     expect(compareContract(profile, stableSchema)).toEqual([]);
+    expect(compareContract(profile, currentSchema)).toEqual([]);
   });
   it('covers every RPC request currently sent by gateway sources', () => {
     for (const dir of ['tasks', 'projects', 'service', 'desktop']) {
@@ -86,6 +88,39 @@ describe('Codex wire compatibility contract', () => {
         });
       }),
     ).toEqual([]);
+  });
+  it('accepts new plan labels and error codes handled as open metadata', () => {
+    expect(
+      check((d) => {
+        d.v2.PlanType.enum.push('promax');
+        d.v2.CodexErrorInfo.oneOf[0].enum.push('flexUnavailable', 'tooManyDenials');
+      }),
+    ).toEqual([]);
+  });
+  it('keeps metadata type, variant and permission constraints gated', () => {
+    expect(
+      check((d) => {
+        d.v2.PlanType.type = 'number';
+      }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      check((d) => {
+        d.v2.CodexErrorInfo.oneOf[0].type = 'number';
+      }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      check((d) => {
+        d.v2.CodexErrorInfo.oneOf.push({
+          type: 'object',
+          properties: { newFailure: { type: 'boolean' } },
+        });
+      }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      check((d) => {
+        d.v2.AskForApproval.oneOf[0].enum.push('autoApproveEverything');
+      }).length,
+    ).toBeGreaterThan(0);
   });
   it('ignores removal of unused experimental fields but retains consumed fields', () => {
     expect(

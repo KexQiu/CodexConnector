@@ -8,5 +8,7 @@ schemas/codex/
 pnpm-lock.yaml
 config/*.local.json
 apps/desktop/out/
+apps/native/src-tauri/target/
+apps/native/src-tauri/gen/
 
 src/codex/compatibility-profile.json

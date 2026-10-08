@@ -1,4 +1,5 @@
 import { FeishuConnection } from './feishu-connection.js';
+import { version as electronAppVersion } from '../package.json';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import type {
@@ -20,6 +21,10 @@ import {
   projectPermissions,
   type RemotePermissions,
 } from '../../../src/config/project-policy.js';
+
+declare const __CONNECTOR_APP_VERSION__: string | undefined;
+const appVersion =
+  typeof __CONNECTOR_APP_VERSION__ === 'string' ? __CONNECTOR_APP_VERSION__ : electronAppVersion;
 
 declare global {
   interface Window {
@@ -1294,7 +1299,7 @@ function App() {
         }}
       />
       <aside className="sidebar">
-        <div className="brand">
+        <div className="brand" data-tauri-drag-region>
           <div className="brand-mark">
             <ConnectorMark />
           </div>
@@ -1335,11 +1340,11 @@ function App() {
           <span className="local-badge">
             <Icon name="shield" /> 数据保存在本机
           </span>
-          <small>macOS · 内部测试版 0.1</small>
+          <small>macOS · 内部测试版 {appVersion}</small>
         </div>
       </aside>
       <main>
-        <header className="topbar">
+        <header className="topbar" data-tauri-drag-region>
           <span className="breadcrumb">
             控制台 <Icon name="chevron" />
             <strong>{pageLabels[page]}</strong>

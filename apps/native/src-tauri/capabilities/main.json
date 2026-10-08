@@ -1,0 +1,10 @@
+{
+  "identifier": "main",
+  "description": "Only the local console can subscribe to host events and drag its window.",
+  "windows": ["main"],
+  "permissions": [
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-start-dragging"
+  ]
+}

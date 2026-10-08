@@ -20,3 +20,6 @@ credentials.json
 **/credentials.json
 docs/gates/raw/
 apps/desktop/out/
+apps/native/src-tauri/target/
+apps/native/src-tauri/gen/
+crates/*/target/

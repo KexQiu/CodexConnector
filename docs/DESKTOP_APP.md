@@ -1,8 +1,12 @@
 # CodexConnector macOS App
 
+Rust/Tauri 过渡版本已新增，独立运行与迁移边界见 [Rust 重写说明](./RUST_REWRITE.md)。本页原有命令及 safeStorage 说明仍针对 Electron 版本。
+
 首版是 Apple Silicon 内部测试版。App 自带 Node 24.15.0 和后端依赖；安装者不需要 Node、pnpm 或源码。仍需安装并登录兼容的 Codex：生成协议基线为 `codex-cli 0.155.0-alpha.9.2`，运行时按实际协议判断兼容。旧基线和 `0.158.0-alpha.2.1` 均可通过核心协议检查；后者尚未完成完整真实联调。未知版本在所需契约兼容时可以启动，契约变化或导出失败会阻止启动；没有关闭检查。详见 [多版本兼容策略](./CODEX_COMPATIBILITY.md)。
 
 当前实现、测试结果与待验收项见 [D1–D4 记录](./gates/D1-D4-desktop.md)。
+
+最新内部测试版本见 [0.1.1-beta.2 版本说明](./releases/0.1.1-beta.2.md)。beta.1 存在签名导致的启动崩溃，请使用 beta.2 或后续版本；静态签名校验通过不能替代最终 App 的启动验证。
 
 ## 安装与使用
 
@@ -120,7 +124,7 @@ pnpm desktop:make
 
 `desktop:setup` 只准备固定版本 Electron 并校验官方 SHA-256，同时编译 DMG 所需的 `macos-alias`、`fs-xattr` 两个构建辅助模块。保持全局依赖安装脚本关闭。若下载中断，删除 `.artifacts/electron-download` 中未完成的对应 ZIP 后重试；替代镜像文件也必须通过固定官方校验值。
 
-需要保护正在运行的开发产物时，可以指定独立构建目录：
+制作可安装的独立版本请执行 `pnpm desktop:release`；DMG、ZIP 与校验清单位于 `.artifacts/releases/<版本>/<UTC 时间>/`。此命令不会覆盖常规开发产物或旧安装包。仅构建和运行独立开发 App 时，也可以指定独立构建目录：
 
 ```sh
 CONNECTOR_DESKTOP_BUILD_ROOT="$PWD/.artifacts/feishu-redesign-20260929" pnpm desktop:build
