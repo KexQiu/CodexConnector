@@ -12,12 +12,44 @@ import {
   statSync,
   realpathSync,
 } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { nodeEnvironment } from './node-runtime.mjs';
+import { verifySourceArchive } from './native-licenses.mjs';
 
 const root = dirname(import.meta.dirname);
+const sha256 = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
+
+/** Public metadata must not include local build paths or arbitrary smoke-test output. */
+export function publicReleaseMetadata(report) {
+  return {
+    version: report.version,
+    platform: 'darwin',
+    arch: 'arm64',
+    minimumMacOS: '13.0',
+    implementation: report.implementation,
+    source: { commit: report.source.commit, dirty: report.source.dirty },
+    runtime: { node: report.node },
+    signing: { type: 'ad-hoc', notarized: false },
+    dmg: { file: basename(report.dmg.file), bytes: report.dmg.bytes, sha256: report.dmg.sha256 },
+    appKiB: report.appKiB,
+    licenses: {
+      packages: report.licenses?.packages ?? 0,
+      sourceArchives: report.licenses?.sourceArchives ?? 0,
+    },
+    checks: {
+      renderer: report.smoke.renderer === true,
+      assetsLoaded: report.smoke.assetsLoaded === true,
+      errorsVisible: report.smoke.errorsVisible === true,
+      ipc: report.smoke.ipc === true,
+      isolated: report.smoke.configured === false && report.smoke.feishuConnected === false,
+      installedRenderer: report.installedSmoke.renderer === true,
+      installedAssetsLoaded: report.installedSmoke.assetsLoaded === true,
+      installedIpc: report.installedSmoke.ipc === true,
+    },
+  };
+}
 export function verifyNativeApp(appPath) {
   // macOS /var and /tmp aliases are symlinks; Tauri intentionally rejects linked executables.
   const binary = join(realpathSync(appPath), 'Contents/MacOS/codexconnector-native');
@@ -87,6 +119,25 @@ export function makeNativeRelease() {
       '<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>com.apple.security.cs.allow-jit</key><true/><key>com.apple.security.cs.disable-library-validation</key><true/></dict></plist>',
     );
     const runtime = join(appPath, 'Contents/Resources/runtime');
+    const runtimeInfo = JSON.parse(readFileSync(join(runtime, 'runtime.json'), 'utf8'));
+    const commit = execFileSync('git', ['rev-parse', 'HEAD'], {
+      cwd: root,
+      encoding: 'utf8',
+    }).trim();
+    if (runtimeInfo.sourceCommit !== commit)
+      throw new Error('运行时源提交与当前提交不一致，请重新执行完整原生构建');
+    const inventory = JSON.parse(readFileSync(join(runtime, 'licenses/inventory.json'), 'utf8'));
+    const sourceEntries = inventory.filter(
+      (entry) => entry.ecosystem === 'rust' && entry.license?.includes('MPL-2.0'),
+    );
+    if (
+      runtimeInfo.licenses?.packages !== inventory.length ||
+      runtimeInfo.licenses?.sourceArchives !== sourceEntries.length ||
+      !inventory.length
+    )
+      throw new Error('缺少第三方许可或源码归档，请核对锁定依赖及许可收集结果');
+    for (const entry of sourceEntries)
+      verifySourceArchive(join(runtime, entry.sourceArchive), entry.sourceSha256);
     const sign = (path, extra = []) =>
       execFileSync(
         '/usr/bin/codesign',
@@ -116,10 +167,20 @@ export function makeNativeRelease() {
     );
     execFileSync('/usr/bin/hdiutil', ['verify', dmg], { stdio: 'inherit' });
     const installedSmoke = verifyDmgInstall(dmg);
-    const digest = createHash('sha256').update(readFileSync(dmg)).digest('hex');
+    const digest = sha256(dmg);
     const report = {
       version: manifest.version,
       implementation: 'Rust/Tauri host, transitional Node gateway',
+      source: {
+        commit,
+        dirty:
+          runtimeInfo.sourceDirty ||
+          Boolean(
+            execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim(),
+          ),
+      },
+      node: runtimeInfo.node,
+      licenses: runtimeInfo.licenses,
       smoke,
       installedSmoke,
       dmg: { file: dmg, bytes: statSync(dmg).size, sha256: digest },
@@ -128,6 +189,16 @@ export function makeNativeRelease() {
       ),
     };
     writeFileSync(join(destination, 'release.json'), JSON.stringify(report, null, 2) + '\n');
+    const publicFiles = [basename(dmg), 'release-metadata.json', 'THIRD_PARTY_NOTICES.txt'];
+    writeFileSync(
+      join(destination, 'release-metadata.json'),
+      JSON.stringify(publicReleaseMetadata(report), null, 2) + '\n',
+    );
+    cpSync(join(runtime, 'THIRD_PARTY_NOTICES.txt'), join(destination, 'THIRD_PARTY_NOTICES.txt'));
+    writeFileSync(
+      join(destination, 'SHA256SUMS'),
+      publicFiles.map((file) => `${sha256(join(destination, file))}  ${file}\n`).join(''),
+    );
     console.log(JSON.stringify(report, null, 2));
     return report;
   } finally {

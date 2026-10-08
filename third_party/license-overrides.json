@@ -1,0 +1,122 @@
+{
+  "rust": {
+    "alloc-stdlib@0.3.0": [
+      {
+        "file": "third_party/licenses/dropbox-rust-alloc-no-stdlib-0a81fd6928ea/LICENSE",
+        "source": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/0a81fd6928ea3b33c8cd484aa4575d50ffb98012/LICENSE"
+      }
+    ],
+    "block2@0.6.2": [
+      {
+        "file": "third_party/licenses/madsmtm-objc2-b4167b582b2f/LICENSE.md",
+        "source": "https://raw.githubusercontent.com/madsmtm/objc2/b4167b582b2f75f9a1be75495c41b765344fd03c/LICENSE.md"
+      }
+    ],
+    "defmt-parser@1.0.0": [
+      {
+        "file": "third_party/licenses/knurling-rs-defmt-4a8cdb44891e/LICENSE-MIT",
+        "source": "https://raw.githubusercontent.com/knurling-rs/defmt/4a8cdb44891ed57b8ff5a023b6bec7137c48708f/LICENSE-MIT"
+      },
+      {
+        "file": "third_party/licenses/knurling-rs-defmt-4a8cdb44891e/LICENSE-APACHE",
+        "source": "https://raw.githubusercontent.com/knurling-rs/defmt/4a8cdb44891ed57b8ff5a023b6bec7137c48708f/LICENSE-APACHE"
+      }
+    ],
+    "dispatch2@0.3.1": [
+      {
+        "file": "third_party/licenses/madsmtm-objc2-8852b424193c/LICENSE.md",
+        "source": "https://raw.githubusercontent.com/madsmtm/objc2/8852b424193ca41602281b3d7540d7c8ed51e49a/LICENSE.md"
+      }
+    ],
+    "objc2@0.6.5": [
+      {
+        "file": "third_party/licenses/madsmtm-objc2-d7d2fa23ceaa/LICENSE.md",
+        "source": "https://raw.githubusercontent.com/madsmtm/objc2/d7d2fa23ceaa5e6096c923b081040e5d81b3b9df/LICENSE.md"
+      }
+    ],
+    "objc2-app-kit@0.3.2": [
+      {
+        "file": "third_party/licenses/madsmtm-objc2-7b1abfd750a2/LICENSE.md",
+        "source": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md"
+      }
+    ],
+    "objc2-core-foundation@0.3.2": [
+      {
+        "file": "third_party/licenses/madsmtm-objc2-7b1abfd750a2/LICENSE.md",
+        "source": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md"
+      }
+    ],
+    "objc2-core-graphics@0.3.2": [
+      {
+        "file": "third_party/licenses/madsmtm-objc2-7b1abfd750a2/LICENSE.md",
+        "source": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md"
+      }
+    ],
+    "objc2-foundation@0.3.2": [
+      {
+        "file": "third_party/licenses/madsmtm-objc2-7b1abfd750a2/LICENSE.md",
+        "source": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md"
+      }
+    ],
+    "objc2-io-surface@0.3.2": [
+      {
+        "file": "third_party/licenses/madsmtm-objc2-7b1abfd750a2/LICENSE.md",
+        "source": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md"
+      }
+    ],
+    "objc2-quartz-core@0.3.2": [
+      {
+        "file": "third_party/licenses/madsmtm-objc2-7b1abfd750a2/LICENSE.md",
+        "source": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md"
+      }
+    ],
+    "objc2-web-kit@0.3.2": [
+      {
+        "file": "third_party/licenses/madsmtm-objc2-7b1abfd750a2/LICENSE.md",
+        "source": "https://raw.githubusercontent.com/madsmtm/objc2/7b1abfd750a2cacaea71d6a56ecfb83cb7de560b/LICENSE.md"
+      }
+    ],
+    "objc2-encode@4.1.0": [
+      {
+        "file": "third_party/licenses/madsmtm-objc2-8d214f547736/LICENSE.md",
+        "source": "https://raw.githubusercontent.com/madsmtm/objc2/8d214f5477365ffcbcbb7de058c86ed9a518efb7/LICENSE.md"
+      }
+    ],
+    "objc2-exception-helper@0.1.1": [
+      {
+        "file": "third_party/licenses/madsmtm-objc2-8d214f547736/LICENSE.md",
+        "source": "https://raw.githubusercontent.com/madsmtm/objc2/8d214f5477365ffcbcbb7de058c86ed9a518efb7/LICENSE.md"
+      }
+    ],
+    "selectors@0.38.0": [
+      {
+        "file": "third_party/licenses/servo-stylo-572ecba2d160/LICENSE-MPL-2.0.txt",
+        "source": "https://www.mozilla.org/media/MPL/2.0/index.txt"
+      }
+    ],
+    "tauri-plugin@2.7.1": [
+      {
+        "file": "third_party/licenses/tauri-apps-tauri-30da1fd6e17d/LICENSE-MIT",
+        "source": "https://raw.githubusercontent.com/tauri-apps/tauri/30da1fd6e17de6107ecc850c95dfb16b5729f2dd/LICENSE-MIT"
+      },
+      {
+        "file": "third_party/licenses/tauri-apps-tauri-30da1fd6e17d/LICENSE-APACHE-2.0",
+        "source": "https://raw.githubusercontent.com/tauri-apps/tauri/30da1fd6e17de6107ecc850c95dfb16b5729f2dd/LICENSE-APACHE-2.0"
+      }
+    ]
+  },
+  "npm": {
+    "agent-base@6.0.2": [
+      {
+        "file": "third_party/licenses/TooTallNate-node-agent-base-c4b8ea2e1a11/LICENSE",
+        "source": "https://raw.githubusercontent.com/TooTallNate/node-agent-base/c4b8ea2e1a11bae023bb09b708050a50418204e9/README.md"
+      }
+    ],
+    "https-proxy-agent@5.0.1": [
+      {
+        "file": "third_party/licenses/TooTallNate-node-https-proxy-agent-d0d80cc0482f/LICENSE",
+        "source": "https://raw.githubusercontent.com/TooTallNate/node-https-proxy-agent/d0d80cc0482f20495aa8595f802e1a9f3b1b3409/README.md"
+      }
+    ]
+  }
+}

@@ -2,6 +2,7 @@
   "name": "codex-feishu-gateway",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Personal macOS Codex gateway for Feishu",
   "packageManager": "pnpm@11.20.0",

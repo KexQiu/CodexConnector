@@ -1,0 +1,5 @@
+{
+  "repository": "https://github.com/openai/codex",
+  "revision": "ea27864f99f0b086cec2f9f0251b7190fb9844f1",
+  "files": ["LICENSE", "NOTICE"]
+}

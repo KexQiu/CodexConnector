@@ -4,6 +4,7 @@ version = "0.2.0-alpha.1"
 edition = "2021"
 rust-version = "1.90"
 description = "CodexConnector Rust gateway persistence and compatibility core"
+license = "MIT"
 
 [dependencies]
 rusqlite = { version = "0.40.2", features = ["bundled", "backup"] }

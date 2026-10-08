@@ -1,37 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import { createRequire } from 'node:module';
-import {
-  cpSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  chmodSync,
-  writeFileSync,
-} from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, rmSync, chmodSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bundledNode, nodeEnvironment } from './node-runtime.mjs';
+import { prepareNativeLicenses, resolvePackage } from './native-licenses.mjs';
 
 const root = dirname(import.meta.dirname);
-function resolvePackage(name, from) {
-  const require = createRequire(join(from, 'package.json'));
-  try {
-    return dirname(realpathSync(require.resolve(`${name}/package.json`)));
-  } catch {
-    let dir = dirname(realpathSync(require.resolve(name)));
-    while (dir !== dirname(dir)) {
-      if (
-        existsSync(join(dir, 'package.json')) &&
-        JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).name === name
-      )
-        return dir;
-      dir = dirname(dir);
-    }
-    throw new Error(`无法打包生产依赖 ${name}`);
-  }
-}
 
 /** Hoist compatible production versions once. Conflicting versions retain a nested copy. */
 export function copyProductionDependencies(from, into, dependencies) {
@@ -112,14 +86,7 @@ export function prepareNativeRuntime() {
   writeFileSync(join(backend, 'package.json'), JSON.stringify({ type: 'module' }));
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
   copyProductionDependencies(root, backend, Object.keys(pkg.dependencies));
-  const licenses = join(target, 'licenses');
-  mkdirSync(licenses, { recursive: true });
-  for (const name of ['react', 'react-dom'])
-    cpSync(join(root, 'apps/desktop/node_modules', name, 'LICENSE'), join(licenses, `${name}.txt`));
-  cpSync(
-    join(root, 'apps/desktop/assets/qrcode-generator.LICENSE'),
-    join(licenses, 'qrcode-generator.txt'),
-  );
+  const licenses = prepareNativeLicenses(target);
   execFileSync(
     join(target, 'node'),
     [
@@ -138,6 +105,14 @@ export function prepareNativeRuntime() {
         node: runtime.version,
         platform: process.platform,
         arch: process.arch,
+        sourceCommit: execFileSync('git', ['rev-parse', 'HEAD'], {
+          cwd: root,
+          encoding: 'utf8',
+        }).trim(),
+        sourceDirty: Boolean(
+          execFileSync('git', ['status', '--porcelain'], { cwd: root, encoding: 'utf8' }).trim(),
+        ),
+        licenses,
       },
       null,
       2,

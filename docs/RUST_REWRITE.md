@@ -25,8 +25,8 @@ Rust → Node 使用继承的 stdin/stdout 管道；Node → 原网关继续使�
 需要 macOS Apple Silicon、Xcode Command Line Tools、兼容 Node、pnpm 和 Rust。锁定的依赖要求 Rust 至少 1.90，当前实际验证 Rust 1.99.0、Tauri 2.12.1；Cargo.lock 固定解析结果。此工作区工具链已放入 `.artifacts/rust-toolchain`，不会修改系统 PATH，脚本优先使用它；其他开发者可按 [官方 rustup 安装说明](https://rust-lang.org/tools/install/)安装。
 
 ```sh
-cd /Users/kex/Code/MyCode/CodexConnector
-pnpm install
+cd CodexConnector
+pnpm install --frozen-lockfile
 pnpm native:dev
 ```
 

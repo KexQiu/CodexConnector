@@ -1,6 +1,6 @@
 # CodexConnector macOS App
 
-Rust/Tauri 过渡版本已新增，独立运行与迁移边界见 [Rust 重写说明](./RUST_REWRITE.md)。本页原有命令及 safeStorage 说明仍针对 Electron 版本。
+GitHub 下载版已切换为 Rust/Tauri 过渡宿主，安装与首次使用见 [用户指南](./GETTING_STARTED.md)，开发与数据边界见 [Rust 重写说明](./RUST_REWRITE.md)。本页安装命令、历史 beta 包和 safeStorage 说明针对保留的 Electron 版本；不要用这里的旧安装路径操作 Rust 下载版。两种宿主复用飞书、项目和缓存界面。
 
 首版是 Apple Silicon 内部测试版。App 自带 Node 24.15.0 和后端依赖；安装者不需要 Node、pnpm 或源码。仍需安装并登录兼容的 Codex：生成协议基线为 `codex-cli 0.155.0-alpha.9.2`，运行时按实际协议判断兼容。旧基线和 `0.158.0-alpha.2.1` 均可通过核心协议检查；后者尚未完成完整真实联调。未知版本在所需契约兼容时可以启动，契约变化或导出失败会阻止启动；没有关闭检查。详见 [多版本兼容策略](./CODEX_COMPATIBILITY.md)。
 

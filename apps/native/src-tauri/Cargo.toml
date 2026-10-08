@@ -4,6 +4,7 @@ version = "0.2.0-alpha.2"
 edition = "2021"
 rust-version = "1.90"
 description = "CodexConnector native macOS host"
+license = "MIT"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

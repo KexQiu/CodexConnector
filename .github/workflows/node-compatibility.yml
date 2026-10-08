@@ -19,7 +19,7 @@ jobs:
           node-version: ${{ matrix.node }}
       - uses: pnpm/action-setup@v4
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: pnpm typecheck && pnpm desktop:typecheck && pnpm lint
+      - run: pnpm typecheck && pnpm desktop:typecheck && pnpm native:typecheck && pnpm lint && pnpm format:check
       - run: pnpm test && pnpm check:sqlite
       - name: Build desktop with its pinned backend runtime
         run: pnpm desktop:build

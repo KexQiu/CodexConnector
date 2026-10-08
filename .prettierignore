@@ -12,3 +12,6 @@ apps/native/src-tauri/target/
 apps/native/src-tauri/gen/
 
 src/codex/compatibility-profile.json
+third_party/licenses/
+third_party/openai-codex/LICENSE
+third_party/openai-codex/NOTICE

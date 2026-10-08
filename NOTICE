@@ -1,0 +1,22 @@
+CodexConnector
+Copyright (c) 2026 KexQiu
+
+Original CodexConnector code is licensed under the MIT License (LICENSE).
+Third-party code and generated materials retain their upstream licenses.
+
+The generated Codex protocol types in src/codex/generated and the protocol
+schemas/snapshots in schemas/codex are
+derived from OpenAI Codex, licensed under Apache-2.0. See
+third_party/openai-codex/LICENSE, NOTICE and SOURCE.json. Generated files have
+only the import/module normalization performed by scripts/generate-protocol.mjs;
+they are not relicensed under MIT.
+
+apps/desktop/assets/qrcode-generator.js retains its MIT upstream license in
+apps/desktop/assets/qrcode-generator.LICENSE.
+
+The downloadable application also includes Node.js, JavaScript packages and
+Rust dependencies. Their license texts, attribution and required unmodified
+MPL-2.0 source archives are included under Contents/Resources/runtime/licenses,
+with an index in THIRD_PARTY_NOTICES.txt. Node's license and bundled notices are
+in Contents/Resources/runtime/NODE-LICENSE. These components are not relicensed
+under the project's MIT License. Codex itself is not bundled.
