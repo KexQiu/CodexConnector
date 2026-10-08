@@ -34,6 +34,6 @@
     "targets": ["app", "dmg"],
     "icon": ["icons/app-icon.icns"],
     "resources": { "../../../.artifacts/native-runtime/": "runtime/" },
-    "macOS": { "minimumSystemVersion": "13.0", "hardenedRuntime": true }
+    "macOS": { "minimumSystemVersion": "13.5", "hardenedRuntime": true }
   }
 }

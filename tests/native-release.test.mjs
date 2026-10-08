@@ -3,11 +3,18 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { publicReleaseMetadata } from '../scripts/native-release.mjs';
+import { assertMacOSMinimum, publicReleaseMetadata } from '../scripts/native-release.mjs';
 import { verifySourceArchive } from '../scripts/native-licenses.mjs';
 import { copyProductionDependencies } from '../scripts/native-runtime.mjs';
 
 describe('native release distribution boundary', () => {
+  it('rejects a minimum OS declaration below a bundled binary requirement', () => {
+    expect(() => assertMacOSMinimum('13.0', '13.5')).toThrow(/声明过低/);
+    expect(() => assertMacOSMinimum('13.5', '13.5.1')).toThrow(/声明过低/);
+    expect(() => assertMacOSMinimum('13.5', '13.5.0')).not.toThrow();
+    expect(() => assertMacOSMinimum('14.0', '13.5')).not.toThrow();
+    expect(() => assertMacOSMinimum('13.5', undefined)).toThrow(/无法校验/);
+  });
   it('keeps dependency runtime and notices without development or local configuration', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cc-production-copy-'));
     const dependency = join(dir, 'node_modules/fixture-dependency');

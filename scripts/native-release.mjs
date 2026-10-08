@@ -20,6 +20,24 @@ import { verifySourceArchive } from './native-licenses.mjs';
 
 const root = dirname(import.meta.dirname);
 const sha256 = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
+const minimumMacOS = JSON.parse(
+  readFileSync(join(root, 'apps/native/src-tauri/tauri.conf.json'), 'utf8'),
+).bundle.macOS.minimumSystemVersion;
+
+export function assertMacOSMinimum(configured, required) {
+  const parse = (value) => {
+    if (typeof value !== 'string' || !/^\d+\.\d+(?:\.\d+)?$/.test(value))
+      throw new Error('无法校验 macOS 最低版本');
+    return [...value.split('.').map(Number), 0, 0].slice(0, 3);
+  };
+  const allowed = parse(configured),
+    needed = parse(required);
+  for (let index = 0; index < 3; index++) {
+    if (allowed[index] > needed[index]) return;
+    if (allowed[index] < needed[index])
+      throw new Error(`随包程序需要 macOS ${required}，App 最低版本 ${configured} 声明过低`);
+  }
+}
 
 /** Public metadata must not include local build paths or arbitrary smoke-test output. */
 export function publicReleaseMetadata(report) {
@@ -27,7 +45,7 @@ export function publicReleaseMetadata(report) {
     version: report.version,
     platform: 'darwin',
     arch: 'arm64',
-    minimumMacOS: '13.0',
+    minimumMacOS,
     implementation: report.implementation,
     source: { commit: report.source.commit, dirty: report.source.dirty },
     runtime: { node: report.node },
@@ -148,7 +166,19 @@ export function makeNativeRelease() {
       readdirSync(path, { withFileTypes: true }).flatMap((item) =>
         item.isDirectory() ? walk(join(path, item.name)) : [join(path, item.name)],
       );
-    for (const path of walk(runtime).filter((file) => file.endsWith('.node'))) sign(path);
+    const addons = walk(runtime).filter((file) => file.endsWith('.node'));
+    for (const path of [
+      join(appPath, 'Contents/MacOS/codexconnector-native'),
+      join(runtime, 'node'),
+      ...addons,
+    ]) {
+      const commands = execFileSync('/usr/bin/otool', ['-l', path], { encoding: 'utf8' });
+      const required =
+        commands.match(/\bminos\s+(\d+\.\d+(?:\.\d+)?)/)?.[1] ??
+        commands.match(/LC_VERSION_MIN_MACOSX[\s\S]*?\bversion\s+(\d+\.\d+(?:\.\d+)?)/)?.[1];
+      assertMacOSMinimum(minimumMacOS, required);
+    }
+    for (const path of addons) sign(path);
     sign(join(runtime, 'node'), ['--options', 'runtime', '--entitlements', entitlements]);
     sign(appPath, ['--options', 'runtime']);
     execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', '--verbose=2', appPath], {

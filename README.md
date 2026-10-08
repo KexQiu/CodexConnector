@@ -8,7 +8,7 @@
 
 ## 下载与要求
 
-当前版本 **0.2.0-alpha.2**：Apple Silicon、macOS 13+，复用本机已经安装并登录的 Codex。安装者不需要 Node、pnpm、Rust 或源码。
+当前版本 **0.2.0-alpha.2**：Apple Silicon、macOS 13.5+，复用本机已经安装并登录的 Codex。安装者不需要 Node、pnpm、Rust 或源码。
 
 这是 **Rust/Tauri 宿主 + 过渡 Node 网关**，目前尚未完成全 Rust 后端迁移。使用系统 WKWebView，不再随包分发 Electron/Chromium；每次构建的实际大小、源提交和 SHA-256 见 Release 的 `release-metadata.json`。
 

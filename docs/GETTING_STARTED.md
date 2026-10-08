@@ -4,7 +4,7 @@
 
 ## 安装
 
-需要 Apple Silicon Mac、macOS 13 或更高版本，以及已安装并登录的 Codex。App 自带 Node 和后端依赖，使用者无需安装 Node、pnpm、Rust 或下载源码。目前未提供 Intel 安装包。
+需要 Apple Silicon Mac、macOS 13.5 或更高版本，以及已安装并登录的 Codex。App 自带 Node 和后端依赖，使用者无需安装 Node、pnpm、Rust 或下载源码。目前未提供 Intel 安装包。
 
 1. 从 [GitHub Releases](https://github.com/KexQiu/CodexConnector/releases/tag/v0.2.0-alpha.2) 下载 `CodexConnector-Rust-0.2.0-alpha.2-arm64.dmg` 与 `SHA256SUMS`。
 2. 可在下载目录运行 `shasum -a 256 -c SHA256SUMS --ignore-missing` 核对下载文件。未下载的附属文件可能被跳过，DMG 必须显示 `OK`。
