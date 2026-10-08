@@ -1,5 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { chmodSync, mkdirSync, mkdtempSync, renameSync, rmSync, symlinkSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3';
@@ -217,7 +225,7 @@ describe('conversation directories and scheduling', () => {
     expect(() => manager.assert(conversation)).toThrow(/丢失/);
     symlinkSync(conversation.cwd + '.old', conversation.cwd);
     expect(() => manager.assert(conversation)).toThrow();
-    rmSync(conversation.cwd);
+    unlinkSync(conversation.cwd);
     renameSync(conversation.cwd + '.old', conversation.cwd);
     chmodSync(conversation.cwd, 0o755);
     expect(() => manager.assert(conversation)).toThrow();

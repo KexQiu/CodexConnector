@@ -1,12 +1,50 @@
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { publicReleaseMetadata } from '../scripts/native-release.mjs';
 import { verifySourceArchive } from '../scripts/native-licenses.mjs';
+import { copyProductionDependencies } from '../scripts/native-runtime.mjs';
 
 describe('native release distribution boundary', () => {
+  it('keeps dependency runtime and notices without development or local configuration', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cc-production-copy-'));
+    const dependency = join(dir, 'node_modules/fixture-dependency');
+    const output = join(dir, 'output');
+    try {
+      mkdirSync(dependency, { recursive: true });
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ type: 'module' }));
+      writeFileSync(
+        join(dependency, 'package.json'),
+        JSON.stringify({ name: 'fixture-dependency', version: '1.0.0', main: 'index.cjs' }),
+      );
+      writeFileSync(join(dependency, 'index.cjs'), 'module.exports = "fixture-runtime";');
+      writeFileSync(join(dependency, 'LICENSE'), 'MIT license fixture');
+      for (const path of [
+        '.claude/settings.local.json',
+        '.github/workflows/test.yml',
+        '.husky/pre-commit',
+        '.env',
+        '.env.local',
+        '.npmrc',
+      ]) {
+        const file = join(dependency, path);
+        mkdirSync(join(file, '..'), { recursive: true });
+        writeFileSync(file, 'development fixture');
+      }
+      copyProductionDependencies(dir, output, ['fixture-dependency']);
+      const packaged = join(output, 'node_modules/fixture-dependency');
+      expect(readFileSync(join(packaged, 'index.cjs'), 'utf8')).toBe(
+        'module.exports = "fixture-runtime";',
+      );
+      expect(readFileSync(join(packaged, 'LICENSE'), 'utf8')).toBe('MIT license fixture');
+      for (const path of ['.claude', '.github', '.husky', '.env', '.env.local', '.npmrc'])
+        expect(existsSync(join(packaged, path))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
   it('exports only public provenance, filenames and fixed checks', () => {
     const secret = 'PRIVATE_TEST_VALUE';
     const report = {

@@ -25,6 +25,18 @@ export function copyProductionDependencies(from, into, dependencies) {
       filter: (path) => {
         const parts = relative(source, path).split(sep);
         if (parts.includes('node_modules')) return false;
+        if (
+          parts.some((part) =>
+            ['.git', '.github', '.claude', '.codex', '.agents', '.vscode', '.husky'].includes(part),
+          ) ||
+          parts.some(
+            (part) =>
+              ['.DS_Store', '.npmrc', '.env'].includes(part) ||
+              part.startsWith('.env.') ||
+              part.endsWith('.local.json'),
+          )
+        )
+          return false;
         if (name === 'better-sqlite3' && parts[0] === 'prebuilds' && parts.length > 1)
           return parts[1] === `${process.platform}-${process.arch}.node`;
         // Declarations and SQLite build intermediates are not loaded by the runtime.
